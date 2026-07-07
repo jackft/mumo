@@ -6,6 +6,8 @@
   "scripts": {
     "clean": "rm -rf packages/*/dist packages/*/dist-lib packages/*/out packages/audio-analysis-wasm/pkg",
     "build": "pnpm -r --if-present run build",
+    "build:web": "pnpm --filter @mumo/mumo run build:web",
+    "build:lib": "pnpm --filter @mumo/mumo run build:lib",
     "prepare": "node scripts/prepare.js",
     "build:wasm": "pnpm --filter audio-analysis-wasm build",
     "dev": "pnpm --filter @mumo/mumo dev",

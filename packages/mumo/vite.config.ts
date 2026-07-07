@@ -3,7 +3,14 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 import wasm from 'vite-plugin-wasm'
 import { visualizer } from 'rollup-plugin-visualizer'
 
-export default defineConfig({
+function normalizeBasePath(value: string | undefined): string {
+  if (!value) return './'
+  if (value === './' || value === '') return './'
+  return value.endsWith('/') ? value : `${value}/`
+}
+
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? normalizeBasePath(process.env['MUMO_BASE_PATH']) : '/',
   plugins: [
     process.env['ANALYZE'] && visualizer({ open: true, gzipSize: true, brotliSize: true }),
     svelte({
@@ -38,4 +45,4 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['@ricky0123/vad-web', 'onnxruntime-web'],
   },
-})
+}))
