@@ -35,7 +35,8 @@ jobs:
           targets: wasm32-unknown-unknown
         if: runner.os != 'Windows'
 
-      - uses: jetli/wasm-pack-action@v0.4.0
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
         if: runner.os != 'Windows'
 
       - run: pnpm install --ignore-scripts
