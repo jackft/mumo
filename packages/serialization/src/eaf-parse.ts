@@ -2,7 +2,7 @@
  * EAF/ETF parser: ELAN Annotation Format 3.0 XML → mumo.
  *
  * Heuristic for "transcript tiers":
- *   - Tiers whose TIER_ID matches `speaker:<label>` become utterance nodes
+ *   - Tiers whose TIER_ID matches \`utterance:<participant>\` become utterance nodes
  *   - Tiers whose TIER_ID matches `evt:<participant>:<tier>` become event nodes
  *   - All other tiers become TierDef + Annotation records in the store
  *
@@ -234,7 +234,7 @@ export interface TokenTierEntry {
 
 export interface EafTomumoopts {
   /** Override which EAF tier IDs become utterance nodes in the PM doc.
-   *  If omitted, defaults to top-level tiers whose id starts with 'participant:'. */
+   *  If omitted, defaults to top-level tiers whose id starts with 'utterance:'. */
   transcriptTierIds?: string[]
   /** EAF tier IDs to treat as gloss/translation tiers linked to utterances.
    *  If omitted, defaults to symbolic-association/subdivision children of transcript tiers. */
@@ -383,20 +383,19 @@ export function eafTomumo(eaf: EAFDocument, opts: EafTomumoopts = {}): ParseResu
   const annIdMap  = new Map<string, string>()  // EAF annotation ID → mumo ID
   const tierIdMap = new Map<string, string>()  // EAF tier ID → mumo tier definition ID
   const ltById    = new Map(eaf.linguisticTypes.map(l => [l.id, l]))
-  const SYNTHETIC_LT_IDS = new Set(['lt-utterance', 'lt-token', 'lt-token-ii'])
+  const SYNTHETIC_LT_IDS = new Set(['lt-utterance', 'lt-token', 'lt-token-ts', 'lt-token-ii'])
 
   // Tier classification
   const transcriptTierIds = new Set(
     opts.transcriptTierIds
       ? opts.transcriptTierIds
-      : eaf.tiers.filter(t => !t.parentRef && (t.id.startsWith('participant:') || t.id.startsWith('utt:') || t.linguisticTypeRef === 'lt-utterance')).map(t => t.id)
+      : eaf.tiers.filter(t => !t.parentRef && (t.id.startsWith('utterance:') || t.linguisticTypeRef === 'lt-utterance')).map(t => t.id)
   )
   // Bare participant labels (e.g. 'A', 'B') extracted from transcript tier IDs.
   // Used to skip ghost tiers whose ID matches a participant label directly.
   const participantLabels = new Set<string>()
   for (const tid of transcriptTierIds) {
-    if (tid.startsWith('participant:')) participantLabels.add(tid.slice('participant:'.length))
-    else if (tid.startsWith('utt:'))    participantLabels.add(tid.slice('utt:'.length))
+    if (tid.startsWith('utterance:')) participantLabels.add(tid.slice('utterance:'.length))
   }
   const glossTierSet = opts.glossTierIds ? new Set(opts.glossTierIds) : null
 
@@ -467,7 +466,7 @@ export function eafTomumo(eaf: EAFDocument, opts: EafTomumoopts = {}): ParseResu
   }
 
   function isTokenTier(eafTierId: string, ltRef: string): boolean {
-    return tokenTierSet.has(eafTierId) || ltRef === 'lt-token' || ltRef === 'lt-token-ii'
+    return tokenTierSet.has(eafTierId) || ltRef === 'lt-token' || ltRef === 'lt-token-ts' || ltRef === 'lt-token-ii'
   }
 
   // Symbolic-association or symbolic-subdivision LT (no independent time anchor).
@@ -478,7 +477,7 @@ export function eafTomumo(eaf: EAFDocument, opts: EafTomumoopts = {}): ParseResu
   function transcriptParticipant(parentTierId: string): string | undefined {
     const t = eaf.tiers.find(x => x.id === parentTierId)
     if (!t) return undefined
-    if (t.id.startsWith('participant:')) return t.id.slice('participant:'.length)
+    if (t.id.startsWith('utterance:')) return t.id.slice('utterance:'.length)
     return t.participant ?? undefined
   }
 
@@ -492,11 +491,17 @@ export function eafTomumo(eaf: EAFDocument, opts: EafTomumoopts = {}): ParseResu
   function addTranscriptBlocks(): void {
     for (const tier of eaf.tiers) {
       if (!transcriptTierIds.has(tier.id)) continue
-      const participant = tier.id.startsWith('participant:')
-        ? tier.id.slice('participant:'.length)
-        : tier.id.startsWith('utt:')
-          ? tier.id.slice('utt:'.length)
-          : (tier.participant ?? 'unknown')
+      const participant = tier.id.startsWith('utterance:')
+        ? tier.id.slice('utterance:'.length)
+        : (tier.participant ?? 'unknown')
+      // The node's tier attr holds the *base* name: '' for default utterance:<p> tiers,
+      // and custom TIER_IDs with any :<participant> suffix stripped — lane IDs re-derive
+      // the suffix, so storing the full TIER_ID would double it (utterance:ACT:ACT).
+      const tierBase = tier.id.startsWith('utterance:')
+        ? ''
+        : (participant && tier.id.endsWith(`:${participant}`)
+            ? tier.id.slice(0, -(participant.length + 1))
+            : tier.id)
 
       for (const ann of tier.annotations) {
         if (ann.kind !== 'alignable') continue
@@ -508,7 +513,7 @@ export function eafTomumo(eaf: EAFDocument, opts: EafTomumoopts = {}): ParseResu
         addBlockTokens(mid, ann.value, tier.id)
         pmBlocks.push({
           type: 'utterance',
-          attrs: { id: mid, tier: tier.id, participant, startTimeSeconds: +s.toFixed(3), endTimeSeconds: +e.toFixed(3) },
+          attrs: { id: mid, tier: tierBase, participant, startTimeSeconds: +s.toFixed(3), endTimeSeconds: +e.toFixed(3) },
           content: ann.value ? [{ type: 'text', text: ann.value }] : [],
         })
       }
@@ -644,9 +649,11 @@ export function eafTomumo(eaf: EAFDocument, opts: EafTomumoopts = {}): ParseResu
       const tierDef: TierDefJSON = {
         id: mumoTierId,
         name: tier.id,
-        // Token tiers are the PM word layer — mark with lt-word so the UI renders them as such
+        // Token tiers are the PM word layer — mark with lt-token so the UI renders them
+        // as such. Included_In keeps its own LT id; lt-token-ts (Time_Subdivision) maps
+        // back to lt-token — internally the stored token times carry the promotion.
         ...(isTokenTier(tier.id, tier.linguisticTypeRef)
-          ? { linguisticTypeId: 'lt-token' }
+          ? { linguisticTypeId: tier.linguisticTypeRef === 'lt-token-ii' ? 'lt-token-ii' : 'lt-token' }
           : (lt && !SYNTHETIC_LT_IDS.has(lt.id) ? { linguisticTypeId: lt.id } : {})),
         ...(participant ? { participant } : {}),
         ...(tier.annotator     ? { annotator: tier.annotator }         : {}),
@@ -879,8 +886,7 @@ export function eafTomumo(eaf: EAFDocument, opts: EafTomumoopts = {}): ParseResu
     const participantMap = new Map<string, ParticipantJSON>()
     for (const tier of eaf.tiers) {
       let label: string | undefined
-      if (tier.id.startsWith('participant:'))     label = tier.id.slice('participant:'.length)
-      else if (tier.id.startsWith('utt:'))    label = tier.id.slice('utt:'.length)
+      if (tier.id.startsWith('utterance:'))   label = tier.id.slice('utterance:'.length)
       else if (tier.id.startsWith('evt:'))    label = tier.id.split(':')[1]
       else if (tier.participant)              label = tier.participant
       if (!label || participantMap.has(label)) continue

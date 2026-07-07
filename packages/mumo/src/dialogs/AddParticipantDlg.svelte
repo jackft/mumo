@@ -24,7 +24,7 @@
   <label>
     Full name / label
     <input bind:value={participant} placeholder="e.g. Alice" />
-    <span class="hint">ELAN PARTICIPANT attribute — displayed name for this speaker.</span>
+    <span class="hint">ELAN PARTICIPANT attribute — displayed name for this participant.</span>
   </label>
 
   <label>

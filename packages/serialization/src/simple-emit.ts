@@ -26,10 +26,10 @@ export function emitVTT(doc: PMNodeJSON): string {
     if (start === null || end === null) continue
     const text = textContent(node).trim()
     if (!text) continue
-    const speaker = (node.attrs?.['participant'] as string | undefined) ?? ''
+    const participant = (node.attrs?.['participant'] as string | undefined) ?? ''
     lines.push(String(idx++))
     lines.push(`${vttTime(start)} --> ${vttTime(end)}`)
-    lines.push(speaker ? `${speaker}: ${text}` : text)
+    lines.push(participant ? `${participant}: ${text}` : text)
     lines.push('')
   }
   return lines.join('\n')
@@ -42,14 +42,14 @@ export function emitTXT(doc: PMNodeJSON): string {
     const text = textContent(node).trim()
     if (!text) continue
     const start   = node.attrs?.['startTimeSeconds'] as number | null ?? null
-    const speaker = (node.attrs?.['participant'] as string | undefined) ?? ''
+    const participant = (node.attrs?.['participant'] as string | undefined) ?? ''
     let line = ''
     if (start !== null) {
       const m = Math.floor(start / 60)
       const s = Math.floor(start % 60)
       line += `[${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}] `
     }
-    if (speaker) line += `${speaker}: `
+    if (participant) line += `${participant}: `
     line += text
     lines.push(line)
   }
@@ -73,9 +73,13 @@ export function emitCSV(doc: PMNodeJSON, store: AnnotationStore): string {
     if (node.type !== 'utterance') continue
     const start    = node.attrs?.['startTimeSeconds'] as number | null ?? null
     const end      = node.attrs?.['endTimeSeconds']   as number | null ?? null
-    const speaker  = (node.attrs?.['participant'] as string | undefined) ?? ''
-    const tierAttr = (node.attrs?.['tier']        as string | undefined) ?? ''
-    rows.push(row(start, end, speaker, tierAttr || `participant:${speaker}`, 'utterance', textContent(node).trim()))
+    const participant = (node.attrs?.['participant'] as string | undefined) || 'unknown'
+    const tierAttrRaw = (node.attrs?.['tier']        as string | undefined) ?? ''
+    const tierAttr    = tierAttrRaw === 'utterance' ? '' : tierAttrRaw
+    const tierName    = tierAttr
+      ? (participant !== 'unknown' && participant !== tierAttr ? `${tierAttr}:${participant}` : tierAttr)
+      : `utterance:${participant}`
+    rows.push(row(start, end, participant, tierName, 'utterance', textContent(node).trim()))
   }
 
   const tierById = new Map(store.allTiers().map(t => [t.id, t]))

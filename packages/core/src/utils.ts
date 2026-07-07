@@ -92,11 +92,11 @@ export function getTokenText(tokenId: ID, tokenStore: TokenStore, doc: PMNode, f
     }
   }
   if (!tok) return '—'
-  let speaker = ''
+  let participant = ''
   doc.forEach(block => {
-    if (block.attrs['id'] === tok.uttId) speaker = (block.attrs['participant'] as string | undefined) ?? ''
+    if (block.attrs['id'] === tok.uttId) participant = (block.attrs['participant'] as string | undefined) ?? ''
   })
-  const tag = speaker ? `[${speaker}]` : ''
+  const tag = participant ? `[${participant}]` : ''
   return `${tag ? tag + ' ' : ''}"${tok.text}"`
 }
 
@@ -104,7 +104,7 @@ export function getUttLabel(doc: PMNode, uttId: ID): string {
   let label = ''
   doc.forEach(node => {
     if (node.attrs['id'] !== uttId) return
-    const speaker = (node.attrs['participant'] as string | undefined) ?? '?'
+    const participant = (node.attrs['participant'] as string | undefined) ?? '?'
     let text = ''
     node.forEach(inline => {
       if (inline.isText && !inline.marks?.some(m => m.type.name === 'suggestion_insert')) {
@@ -112,7 +112,7 @@ export function getUttLabel(doc: PMNode, uttId: ID): string {
       }
     })
     const preview = text.trim().slice(0, 40)
-    label = `[${speaker}] ${preview}${text.trim().length > 40 ? '…' : ''}`
+    label = `[${participant}] ${preview}${text.trim().length > 40 ? '…' : ''}`
   })
   return label || '—'
 }

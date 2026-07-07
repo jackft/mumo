@@ -23,5 +23,5 @@
   },
   "tags": ["+public"],
   "ignoreExportsUsedInFile": true,
-  "ignoreBinaries": ["wasm-pack"]
+  "ignoreBinaries": ["wasm-pack", "python3"]
 }

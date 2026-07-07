@@ -23,7 +23,7 @@ export class UtteranceNodeView implements NodeView {
   private lineNumRightEl: HTMLSpanElement
   startTimeEl: HTMLSpanElement
   endTimeEl: HTMLSpanElement
-  private speakerEl: HTMLSpanElement
+  private participantEl: HTMLSpanElement
   private tierEl: HTMLSpanElement
   private glossEl: HTMLElement
   view: EditorView
@@ -34,7 +34,7 @@ export class UtteranceNodeView implements NodeView {
 
   _decimals: number
   _editingWhichTime: 'start' | 'end' | null = null
-  private _speakerEditing = false
+  private _participantEditing = false
 
   private _glossOnSave: ((text: string) => void) | null = null
   private _hasGlossAnnotation = false
@@ -72,11 +72,11 @@ export class UtteranceNodeView implements NodeView {
     this.endTimeEl.contentEditable = 'false'
     this.endTimeEl.textContent = formatTime(node.attrs.endTimeSeconds)
 
-    this.speakerEl = document.createElement('span')
-    this.speakerEl.className = 'utt-speaker'
-    this.speakerEl.contentEditable = 'false'
-    this.speakerEl.textContent = node.attrs.participant || '—'
-    this.speakerEl.title = 'Click to edit participant (Shift+Tab)'
+    this.participantEl = document.createElement('span')
+    this.participantEl.className = 'utt-participant'
+    this.participantEl.contentEditable = 'false'
+    this.participantEl.textContent = node.attrs.participant || '—'
+    this.participantEl.title = 'Click to edit participant (Shift+Tab)'
 
     this.tierEl = document.createElement('span')
     this.tierEl.className = 'utt-tier'
@@ -96,7 +96,7 @@ export class UtteranceNodeView implements NodeView {
     this.dom.appendChild(this.lineNumEl)
     this.dom.appendChild(this.startTimeEl)
     this.dom.appendChild(this.endTimeEl)
-    this.dom.appendChild(this.speakerEl)
+    this.dom.appendChild(this.participantEl)
     this.dom.appendChild(this.tierEl)
     this.dom.appendChild(this.contentDOM)
     this.dom.appendChild(this.lineNumRightEl)
@@ -118,7 +118,7 @@ export class UtteranceNodeView implements NodeView {
       else this._startTimeEdit('end')
     })
 
-    this.speakerEl.addEventListener('mousedown', (e) => {
+    this.participantEl.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return
       e.stopPropagation()
       this.startEdit()
@@ -222,50 +222,55 @@ export class UtteranceNodeView implements NodeView {
     )
   }
 
-  // Speaker editing
+  // Participant editing
 
   startEdit(): void {
-    if (this._speakerEditing) return
-    this._speakerEditing = true
+    if (this._participantEditing) return
+    this._participantEditing = true
     const original = this.node.attrs.participant as string
-    startFieldEdit(this.speakerEl, this.view,
+    startFieldEdit(this.participantEl, this.view,
       (rawText, returnFocus) => {
-        this._speakerEditing = false
-        const newSpeaker = rawText === '—' ? '' : rawText
-        this.speakerEl.textContent = newSpeaker || '—'
+        this._participantEditing = false
+        const newParticipant = rawText === '—' ? '' : rawText
+        this.participantEl.textContent = newParticipant || '—'
         const pos = this.getPos()
-        if (pos !== undefined && newSpeaker !== original) {
-          if (this.speakerConflicts(newSpeaker, pos)) {
-            this.speakerEl.textContent = original || '—'
-            this.speakerEl.classList.add('utt-speaker--conflict')
-            setTimeout(() => { this.speakerEl.classList.remove('utt-speaker--conflict') }, 700)
+        if (pos === undefined) return
+        if (newParticipant !== original) {
+          if (this.participantConflicts(newParticipant, pos)) {
+            this.participantEl.textContent = original || '—'
+            this.participantEl.classList.add('utt-participant--conflict')
+            setTimeout(() => { this.participantEl.classList.remove('utt-participant--conflict') }, 700)
             return
           }
           const currentTier = (this.node.attrs.tier as string | null) ?? ''
           const tierIsAuto = currentTier === '' || currentTier === 'utterance'
           const newTier = tierIsAuto ? 'utterance' : currentTier
           let tr = this.view.state.tr
-            .setNodeMarkup(pos, undefined, { ...this.node.attrs, participant: newSpeaker, tier: newTier })
-            .setMeta('participantChange', { uttId: this.node.attrs.id as string, participant: newSpeaker, originalParticipant: original, tier: newTier })
+            .setNodeMarkup(pos, undefined, { ...this.node.attrs, participant: newParticipant, tier: newTier })
+            .setMeta('participantChange', { uttId: this.node.attrs.id as string, participant: newParticipant, originalParticipant: original, tier: newTier })
           if (returnFocus) tr = tr.setSelection(TextSelection.create(tr.doc, pos + 1))
+          this.view.dispatch(tr)
+        } else if (returnFocus) {
+          // No change — just place cursor at start of utterance content
+          const tr = this.view.state.tr.setSelection(TextSelection.create(this.view.state.doc, pos + 1))
           this.view.dispatch(tr)
         }
       },
       () => {
-        this._speakerEditing = false
-        this.speakerEl.textContent = original || '—'
+        this._participantEditing = false
+        this.participantEl.textContent = original || '—'
       },
     )
     // Select all for easy replacement
     const range = document.createRange()
-    range.selectNodeContents(this.speakerEl)
+    range.selectNodeContents(this.participantEl)
     const sel = window.getSelection()
     sel?.removeAllRanges()
     sel?.addRange(range)
   }
 
-  private speakerConflicts(newSpeaker: string, selfPos: number): boolean {
-    if (!newSpeaker) return false
+  private participantConflicts(newParticipant: string, selfPos: number): boolean {
+    if (!newParticipant) return false
     const s1: number | null = this.node.attrs.startTimeSeconds
     if (s1 === null) return false
     const e1: number = this.node.attrs.endTimeSeconds ?? s1 + 1
@@ -274,7 +279,7 @@ export class UtteranceNodeView implements NodeView {
     this.view.state.doc.forEach((node, offset) => {
       if (conflict || offset === selfPos) return
       if (node.type.name !== 'utterance') return
-      if (node.attrs.participant !== newSpeaker) return
+      if (node.attrs.participant !== newParticipant) return
       const s2: number | null = node.attrs.startTimeSeconds
       if (s2 === null) return
       const e2: number = node.attrs.endTimeSeconds ?? s2 + 1
@@ -368,9 +373,9 @@ export class UtteranceNodeView implements NodeView {
     if (pos === undefined) return
     const original = this.node.attrs.participant as string
 
-    if (this.speakerConflicts(newParticipant, pos)) {
-      this.speakerEl.classList.add('utt-speaker--conflict')
-      setTimeout(() => { this.speakerEl.classList.remove('utt-speaker--conflict') }, 700)
+    if (this.participantConflicts(newParticipant, pos)) {
+      this.participantEl.classList.add('utt-participant--conflict')
+      setTimeout(() => { this.participantEl.classList.remove('utt-participant--conflict') }, 700)
       return
     }
 
@@ -388,7 +393,7 @@ export class UtteranceNodeView implements NodeView {
 
   stopEvent(event: Event): boolean {
     return (
-      event.target === this.speakerEl ||
+      event.target === this.participantEl ||
       event.target === this.tierEl ||
       event.target === this.startTimeEl ||
       event.target === this.endTimeEl ||
@@ -398,7 +403,7 @@ export class UtteranceNodeView implements NodeView {
 
   ignoreMutation(): boolean {
     return (
-      this._speakerEditing ||
+      this._participantEditing ||
       this.tierEl.contentEditable === 'true' ||
       this._editingWhichTime !== null ||
       this._glossEditing
@@ -431,8 +436,8 @@ export class UtteranceNodeView implements NodeView {
       unregisterUttTierView(prevId, this)
       registerUttTierView(newId, this)
     }
-    if (this.speakerEl.contentEditable !== 'true') {
-      this.speakerEl.textContent = node.attrs.participant || '—'
+    if (this.participantEl.contentEditable !== 'true') {
+      this.participantEl.textContent = node.attrs.participant || '—'
     }
     if (this.tierEl.contentEditable !== 'true') {
       this.tierEl.textContent = node.attrs.tier || ''

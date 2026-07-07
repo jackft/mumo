@@ -26,7 +26,7 @@
   import type { ID } from '@mumo/core'
   import type { Node, Mark } from 'prosemirror-model'
   import type { EditorState } from 'prosemirror-state'
-  import { docToTimeline } from './docToTimeline.js'
+  import { docToTimeline, uttLaneId } from './docToTimeline.js'
   import { TrackOverlayPlugin } from '@mumo/media-player'
   import type { VizOptions } from '@mumo/media-player'
   
@@ -55,7 +55,7 @@
   import TrackVizDlg from './dialogs/TrackVizDlg.svelte'
   import AssignLingTypeDlg from './dialogs/AssignLingTypeDlg.svelte'
   import AssignVocabDlg from './dialogs/AssignVocabDlg.svelte'
-  import LinkSpeakerDlg from './dialogs/LinkSpeakerDlg.svelte'
+  import LinkParticipantDlg from './dialogs/LinkParticipantDlg.svelte'
   import LingTypeManagerDlg from './dialogs/LingTypeManagerDlg.svelte'
   import VocabManagerDlg from './dialogs/VocabManagerDlg.svelte'
   import SymbolManagerDlg from './dialogs/SymbolManagerDlg.svelte'
@@ -63,6 +63,7 @@
   import EditAnnPopover from './dialogs/EditAnnPopover.svelte'
   import EafImportDlg from './dialogs/EafImportDlg.svelte'
   import EditUttTierDlg from './dialogs/EditUttTierDlg.svelte'
+  import EditTierDlg from './dialogs/EditTierDlg.svelte'
   import UttTiersDlg from './dialogs/UttTiersDlg.svelte'
   import type { SlotFillMode } from './patternTypes.js'
   import type { MediaState, SpectrogramSettings, SpectrogramTile, VadSegment, WaveformBins } from '@mumo/media-player'
@@ -963,8 +964,8 @@
   // Safe to run on every load — exits immediately if nothing needs migrating.
   for (const tier of store.allTiers()) {
     if (!tier.parentTierId?.startsWith('__tok__')) continue
-    const speaker = tier.parentTierId.slice('__tok__'.length)
-    store.updateTier(tier.id, { parentTierId: ensureWordTier(speaker).id })
+    const participant = tier.parentTierId.slice('__tok__'.length)
+    store.updateTier(tier.id, { parentTierId: ensureWordTier(participant).id })
   }
 
   // After Timeline mounts, push initial data imperatively.
@@ -1184,10 +1185,9 @@
     return store.addLinguisticType(constraint, { constraint }).id
   }
 
-  /** Find the lt-word tier for a speaker, creating it if absent. */
-  function ensureWordTier(speaker: string): TierDef {
-    return store.allTiers().find(t => isTokenLtId(t.linguisticTypeId) && t.participant === speaker)
-      ?? store.addTier(speaker, { linguisticTypeId: TOKEN_LT_ID, participant: speaker })
+  function ensureWordTier(participant: string): TierDef {
+    return store.allTiers().find(t => isTokenLtId(t.linguisticTypeId) && t.participant === participant)
+      ?? store.addTier(`tokens:${participant}`, { linguisticTypeId: TOKEN_LT_ID, participant })
   }
 
   /** Resolve a tier's effective vocabularyId via its linguistic type. */
@@ -1444,7 +1444,6 @@
   function stepSpeedDown() { const arr = [...SPEED_STEPS].reverse(); const s = arr.find(s => s < mediaSpeed); if (s) setSpeed(s) }
 
   function laneMenuDepth(laneId: string, depth?: number): number {
-    if (laneId.startsWith('participant:')) return 0
     if (timelineData.lanes.find(l => l.id === laneId)?.type === 'participant') return 0
     if (laneId.startsWith('tokens:')) return 1
     if (laneId.startsWith('ann:')) {
@@ -1457,21 +1456,16 @@
   function isLaneHidden(laneId: string): boolean {
     if (hiddenLaneIds.has(laneId)) return true
     if (laneId.startsWith('tokens:')) {
-      const inner = laneId.slice('tokens:'.length)
-      if (isLaneHidden(inner)) return true
-      // inner may be 'speaker:Ann' — also check utterance lanes for the same participant
-      if (inner.startsWith('participant:')) {
-        const participant = inner.slice('participant:'.length)
-        if (timelineData.lanes.some(l => l.type === 'participant' && l.participant === participant && hiddenLaneIds.has(l.id))) return true
-      }
+      // Hidden if the corresponding utterance lane for the same participant is hidden
+      const tokenLane = timelineData.lanes.find(l => l.id === laneId)
+      if (tokenLane && timelineData.lanes.some(l => l.type === 'participant' && l.participant === tokenLane.participant && hiddenLaneIds.has(l.id))) return true
       return false
     }
     if (laneId.startsWith('ann:')) {
       const tier = tiers.find(t => t.id === laneId.slice(4))
       if (tier?.parentTierId && isLaneHidden(`ann:${tier.parentTierId}`)) return true
       if (tier?.participant) {
-        if (isLaneHidden(`participant:${tier.participant}`)) return true
-        // Also check utterance lanes (utt:X, CHI, etc.) for this participant
+        // Hidden if any utterance lane for this participant is hidden
         if (timelineData.lanes.some(l => l.type === 'participant' && l.participant === tier.participant && hiddenLaneIds.has(l.id))) return true
       }
     }
@@ -1606,7 +1600,9 @@ let patternSchemaDlgOpen = $state(false)
   }
   let assignLingTypeDlg = $state<AssignLingTypeDialog>({ open: false, tierId: '' })
 
-  let linkSpeakerDlg = $state<{ open: boolean; tierId: string }>({ open: false, tierId: '' })
+  let linkParticipantDlg = $state<{ open: boolean; tierId: string }>({ open: false, tierId: '' })
+
+  let editTierDlg = $state<{ open: boolean; tierId: string }>({ open: false, tierId: '' })
 
   interface SegmentTierDialog {
     open: boolean
@@ -1637,9 +1633,10 @@ let patternSchemaDlgOpen = $state(false)
 
   function closeAnyOpenDlg() {
     if (addTierDlg.open)      addTierDlg      = { ...addTierDlg,      open: false }
-if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
+    if (editTierDlg.open)     editTierDlg     = { ...editTierDlg,     open: false }
+    if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     if (assignLingTypeDlg.open) assignLingTypeDlg = { ...assignLingTypeDlg, open: false }
-    if (linkSpeakerDlg.open)   linkSpeakerDlg   = { ...linkSpeakerDlg,   open: false }
+    if (linkParticipantDlg.open)   linkParticipantDlg   = { ...linkParticipantDlg,   open: false }
     if (eafImportDlg.open)     eafImportDlg     = { ...eafImportDlg,     open: false }
     if (segmentTierDlg.open)   segmentTierDlg   = { ...segmentTierDlg,   open: false }
     patternSchemaDlgOpen     = false
@@ -1654,8 +1651,8 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
   }
 
   const _anyDlgOpen = () =>
-    addTierDlg.open || assignVocabDlg.open ||
-    assignLingTypeDlg.open || linkSpeakerDlg.open || eafImportDlg.open || segmentTierDlg.open ||
+    addTierDlg.open || assignVocabDlg.open || editTierDlg.open ||
+    assignLingTypeDlg.open || linkParticipantDlg.open || eafImportDlg.open || segmentTierDlg.open ||
     patternSchemaDlgOpen || vocabDlgOpen || lingTypeDlgOpen || symbolDlgOpen || preferencesDlgOpen ||
     trackMappingDlgTrackSet !== null || _trackVizDlgOpen || tlSettingsOpen
 
@@ -1791,22 +1788,43 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
   }
 
   function participantFromTierName(tierName: string): string {
-    if (tierName.startsWith('participant:')) return tierName.slice('participant:'.length)
-    if (tierName.startsWith('utt:')) return tierName.slice('utt:'.length)
+    if (tierName.startsWith('utterance:')) return tierName.slice('utterance:'.length)
     return tierName
+  }
+
+  /** Base tier attr for an utterance lane ID ('' = default utterance:<participant> lane). */
+  function laneBase(laneId: string, participant: string): string {
+    if (laneId === `utterance:${participant}` || laneId === 'utterance:unknown') return ''
+    return participant && laneId.endsWith(`:${participant}`)
+      ? laneId.slice(0, -(participant.length + 1))
+      : laneId
+  }
+
+  /** Normalize a user-typed lane label to a base tier attr. Accepts both 'turn' and
+   *  'turn:<participant>' forms; 'utterance' / 'utterance:<participant>' resets to the
+   *  default lane (''). Returns null when the label is reserved or collides. */
+  function normalizeLaneLabel(label: string, participant: string): string | null {
+    let base = label.trim()
+    if (participant && base.endsWith(`:${participant}`)) base = base.slice(0, -(participant.length + 1))
+    if (base === '' || base === 'utterance') return ''
+    if (tierNameError(base, participant)) return null
+    return base
   }
 
   function handleRenameLane(laneId: string, newLabel: string) {
     if (laneId.startsWith('ann:')) {
+      if (tierNameError(newLabel, '')) return
       store.updateTier(laneId.slice('ann:'.length), { name: newLabel })
       return
     }
 
-    // Participant/utterance lanes: renaming only changes the tier display name, not the participant.
+    // Utterance lanes: renaming only changes the tier display name, not the participant.
     const lane = timelineData.lanes.find(l => l.id === laneId)
-    if (lane?.type === 'participant' || laneId.startsWith('participant:')) {
-      const currentParticipant = lane?.participant ?? laneId.slice('participant:'.length)
-      editorRef?.updateUttTier(laneId, newLabel, currentParticipant)
+    if (lane?.type === 'participant') {
+      const p = lane.participant ?? ''
+      const newBase = normalizeLaneLabel(newLabel, p)
+      if (newBase === null) return
+      editorRef?.updateUttTier(p, laneBase(laneId, p), newBase)
       _pushTimelineData()
       return
     }
@@ -1832,10 +1850,10 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     closeCtxMenu()
   }
 
-  function ctxAddSpeakerSubTier() {
+  function ctxAddParticipantSubTier() {
     const lane = timelineData.lanes.find(l => l.id === ctxMenu.laneId)
-    const speaker = lane?.participant ?? ctxMenu.laneId.slice('participant:'.length)
-    addTierDlg = { open: true, participant: speaker, parentLaneId: '' }
+    const participant = lane?.participant ?? participantFromTierName(ctxMenu.laneId)
+    addTierDlg = { open: true, participant, parentLaneId: '' }
     closeCtxMenu()
   }
 
@@ -1847,9 +1865,16 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
   }
 
   function confirmEditUttTier(tierName: string, participant: string) {
-    const { tierName: oldTierName, participant: oldParticipant } = editUttTierDlg
+    const { tierName: oldLaneId, participant: oldParticipant } = editUttTierDlg
     editUttTierDlg = { ...editUttTierDlg, open: false }
-    editorRef?.updateUttTier(oldTierName, tierName, participant)
+    // The typed name may carry either the old or the new participant suffix — strip old first.
+    const stripped = oldParticipant && tierName.endsWith(`:${oldParticipant}`)
+      ? tierName.slice(0, -(oldParticipant.length + 1))
+      : tierName
+    const newBase = normalizeLaneLabel(stripped, participant)
+    if (newBase === null) return
+    editorRef?.updateUttTier(oldParticipant, laneBase(oldLaneId, oldParticipant), newBase,
+      participant !== oldParticipant ? participant : undefined)
     if (oldParticipant !== participant) {
       for (const tier of store.allTiersOrdered()) {
         if (tier.participant === oldParticipant) store.updateTier(tier.id, { participant })
@@ -1862,25 +1887,27 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     const map = new SvelteMap<string, number>()
     ;(editorRef?.liveDoc() ?? currentDoc).forEach((node: Node) => {
       if (node.type.name !== 'utterance') return
-      const tier: string = (node.attrs.tier as string | undefined) || `participant:${(node.attrs.participant as string | undefined) ?? ''}`
-      map.set(tier, (map.get(tier) ?? 0) + 1)
+      const lane = uttLaneId(node.attrs.tier as string | undefined, (node.attrs.participant as string | undefined) ?? '')
+      map.set(lane, (map.get(lane) ?? 0) + 1)
     })
     return [...map.entries()].map(([tierName, count]) => ({ tierName, count }))
   }
 
   function handleUttTierUpdate(oldTierName: string, newTierName: string) {
     const lane = timelineData.lanes.find(l => l.id === oldTierName)
-    const currentParticipant = lane?.participant ?? participantFromTierName(oldTierName)
-    editorRef?.updateUttTier(oldTierName, newTierName, currentParticipant)
+    const p = lane?.participant ?? participantFromTierName(oldTierName)
+    const newBase = normalizeLaneLabel(newTierName, p)
+    if (newBase === null) return
+    editorRef?.updateUttTier(p, laneBase(oldTierName, p), newBase)
     _pushTimelineData()
   }
 
   function ctxAddWordSubTier() {
     const lane = timelineData.lanes.find(l => l.id === ctxMenu.laneId)
-    const speaker = lane?.participant
+    const participant = lane?.participant
       ?? tiers.find(t => t.id === ctxMenu.tierId && isTokenLtId(t.linguisticTypeId))?.participant
       ?? ''
-    addTierDlg = { open: true, participant: speaker, parentLaneId: ctxMenu.laneId }
+    addTierDlg = { open: true, participant, parentLaneId: ctxMenu.laneId }
     closeCtxMenu()
   }
 
@@ -1891,9 +1918,9 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     if (!tierId) {
       const lane = timelineData.lanes.find(l => l.id === ctxMenu.laneId)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const speaker: string = (lane as any)?.participant ?? ''
-      if (!speaker) { closeCtxMenu(); return }
-      tierId = ensureWordTier(speaker).id
+      const participant: string = (lane as any)?.participant ?? ''
+      if (!participant) { closeCtxMenu(); return }
+      tierId = ensureWordTier(participant).id
     }
     store.updateTier(tierId, { linguisticTypeId: includedIn ? TOKEN_LT_II_ID : TOKEN_LT_ID })
     _pushTimelineData()
@@ -1961,8 +1988,8 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     closeCtxMenu()
   }
 
-  function ctxLinkToSpeaker() {
-    linkSpeakerDlg = { open: true, tierId: ctxMenu.tierId }
+  function ctxLinkToParticipant() {
+    linkParticipantDlg = { open: true, tierId: ctxMenu.tierId }
     closeCtxMenu()
   }
 
@@ -1973,12 +2000,28 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     closeCtxMenu()
   }
 
-  function ctxRenameTier() {
-    const tier = store.getTier(ctxMenu.tierId)
-    if (!tier) { closeCtxMenu(); return }
-    const name = window.prompt('Rename tier:', tier.name)
-    if (name?.trim()) store.updateTier(tier.id, { name: name.trim() })
+  function ctxEditTier() {
+    editTierDlg = { open: true, tierId: ctxMenu.tierId }
     closeCtxMenu()
+  }
+
+  function confirmEditTier(vals: { name: string; participant: string }) {
+    const tier = store.getTier(editTierDlg.tierId)
+    editTierDlg = { ...editTierDlg, open: false }
+    if (!tier) return
+    const base = vals.name.trim()
+    if (!base || tierNameError(base, vals.participant, tier.id)) return
+    store.updateTier(tier.id, {
+      name: composeTierName(base, vals.participant),
+      participant: vals.participant || undefined,
+    })
+  }
+
+  /** Base name of a tier (its name with the :participant suffix stripped). */
+  function tierBaseName(tier: TierDef): string {
+    return tier.participant && tier.name.endsWith(`:${tier.participant}`)
+      ? tier.name.slice(0, -(tier.participant.length + 1))
+      : tier.name
   }
 
   function ctxDeleteTier() {
@@ -2243,6 +2286,7 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
           ...(opts?.mediaUrl !== undefined ? { mediaUrl: opts.mediaUrl } : {}),
           ...(opts?.timeOriginMs ? { timeOrigin: opts.timeOriginMs } : {}),
           ...(ts ? { tokenStore: ts } : {}),
+          ...(opts?.includeTokenTiers && ts ? { includeWords: true } : {}),
         })
       },
     })
@@ -2284,10 +2328,10 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
         let covered = coverage.get(tier.id)
         if (!covered) { covered = new SvelteSet(); coverage.set(tier.id, covered) }
 
-        const speaker = tier.participant  // undefined for no-participant gloss tiers
+        const tierParticipant = tier.participant  // undefined for no-participant gloss tiers
         doc.forEach((block: Node) => {
           if (block.type.name !== 'utterance') return
-          if (speaker && block.attrs.participant !== speaker) return
+          if (tierParticipant && block.attrs.participant !== tierParticipant) return
           const uttId = block.attrs.id as string
           if (!covered!.has(uttId)) {
             store.addAnnotation('', [], { tierId: tier.id, blockNodeId: uttId })
@@ -2681,7 +2725,7 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
         if (clippedEnd - start < 0.05) return
         editorRef?.insertBlockAtTime('utterance', {
           participant: uttLane.participant,
-          tier: laneId.startsWith('participant:') ? '' : laneId,
+          tier: laneId.startsWith('utterance:') ? '' : laneId,
           startTimeSeconds: +start.toFixed(3),
           endTimeSeconds: +clippedEnd.toFixed(3),
         }, start)
@@ -3468,7 +3512,7 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
 
   function confirmAddParticipant(vals: { id: string; participant: string; annotator: string; defaultLocale: string }) {
     addParticipantDlgOpen = false
-    const tierName = `participant:${vals.id}`
+    const tierName = `utterance:${vals.id}`
     store.addTier(tierName, {
       participant: vals.participant || vals.id,
       ...(vals.annotator    ? { annotator:     vals.annotator }    : {}),
@@ -3487,7 +3531,13 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
       ? allTiers.filter(t => t.participant === source.id)
       : allTiers.filter(t => t.id === source.id)
     for (const tier of tiersToCopy) {
-      store.addTier(tier.name, {
+      // Swap the participant suffix: gesture:Ann → gesture:Bob (names must stay unique)
+      const base = tier.participant && tier.name.endsWith(`:${tier.participant}`)
+        ? tier.name.slice(0, -(tier.participant.length + 1))
+        : tier.name
+      const newName = composeTierName(base, newLabel)
+      if (store.allTiers().some(t => t.name === newName)) continue
+      store.addTier(newName, {
         linguisticTypeId: tier.linguisticTypeId,
         participant: newLabel,
       })
@@ -3498,12 +3548,25 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     const old = store.getParticipant(id)
     const isRename = !!(old?.label && patch.label && old.label !== patch.label)
     if (isRename) {
-      handleRenameLane(`participant:${old!.label}`, patch.label!)
+      const oldLabel = old!.label
+      const newLabel = patch.label!
+      // Update the participant attr on all utterance nodes; tier attrs stay untouched,
+      // so lane IDs re-derive as <base>:<newLabel> / utterance:<newLabel> automatically.
+      editorRef?.renameParticipant(oldLabel, newLabel)
+      // Store tiers scoped to this participant: swap the participant and the :suffix
+      // in their names (gesture:Ann → gesture:Bob) so names stay unique and consistent.
+      for (const tier of store.allTiers()) {
+        if (tier.participant !== oldLabel) continue
+        const name = tier.name.endsWith(`:${oldLabel}`)
+          ? `${tier.name.slice(0, -(oldLabel.length + 1))}:${newLabel}`
+          : tier.name
+        store.updateTier(tier.id, { name, participant: newLabel })
+      }
     }
     store.updateParticipant(id, patch)
     if (isRename) {
-      // handleRenameLane updates the PM doc and tiers synchronously, but _pushTimelineData
-      // only fires via syncStore microtask. Call it immediately so the timeline updates.
+      // The PM doc and tiers update synchronously, but _pushTimelineData only fires via
+      // syncStore microtask. Call it immediately so the timeline updates.
       _pushTimelineData()
     }
   }
@@ -3512,14 +3575,44 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     store.removeParticipant(id)
   }
 
+  /** Tier naming convention: participant-scoped tiers are named base:participant so
+   *  names stay unique (ELAN TIER_IDs must be unique) and tiers sharing a base name
+   *  across participants share a linguistic type — which is what the table merges on.
+   *  A suffix equal to the base is redundant and skipped (FA1, not FA1:FA1). */
+  function composeTierName(base: string, participant: string): string {
+    const b = base.trim()
+    return participant && participant !== b ? `${b}:${participant}` : b
+  }
+
+  /** Error message if the tier name can't be used, else null.
+   *  Pass excludeTierId when editing an existing tier so its own name doesn't collide. */
+  function tierNameError(base: string, participant: string, excludeTierId?: string): string | null {
+    const b = base.trim()
+    if (!b) return null
+    if (/^(utterance|tokens)(:|$)/i.test(b)) return '"utterance" and "tokens" are reserved names'
+    const full = composeTierName(b, participant)
+    if (store.allTiers().some(t => t.name === full && t.id !== excludeTierId)) return `A tier named "${full}" already exists`
+    return null
+  }
+
+  /** Find or create the LT named by the tier's base name with the given constraint.
+   *  Same-base tiers across participants share this LT so table merge groups them. */
+  function ensureNamedLt(base: string, constraint: TierConstraint): string {
+    const existing = lingTypes.find(lt => lt.name === base && lt.constraint === constraint)
+    if (existing) return existing.id
+    return store.addLinguisticType(base, { constraint }).id
+  }
+
   function confirmAddTier(vals: { name: string; participant: string; linguisticTypeId: string; constraint: TierConstraint | ''; inlineGloss: boolean }) {
-    if (!vals.name.trim()) return
+    const base = vals.name.trim()
+    if (!base || tierNameError(base, vals.participant)) return
+    const fullName = composeTierName(base, vals.participant)
     const ltId = vals.linguisticTypeId
-      || (vals.constraint ? ensureLinguisticType(vals.constraint as TierConstraint) : undefined)
+      || (vals.constraint ? ensureNamedLt(base, vals.constraint as TierConstraint) : undefined)
     const parentLaneId = addTierDlg.parentLaneId
 
     // Resolve the lt-word parent tier (if any) so we can set parentTierId correctly.
-    // Named word lanes are ann:${ltWordTier.id}; generic word lanes are words:speaker:X.
+    // Named word lanes are ann:${ltWordTier.id}; generic word lanes are tokens:${participant}.
     // Generic lanes always have a real lt-word tier created on demand via ensureWordTier.
     let ltTokenParentTier: TierDef | undefined
     let annParentId: string | undefined
@@ -3528,12 +3621,12 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
       ltTokenParentTier = tiers.find(t => t.id === id && isTokenLtId(t.linguisticTypeId))
       if (!ltTokenParentTier) annParentId = id
     } else if (parentLaneId.startsWith('tokens:')) {
-      const speaker = timelineData.lanes.find(l => l.id === parentLaneId)?.participant ?? ''
-      if (speaker) ltTokenParentTier = ensureWordTier(speaker)
+      const participant = timelineData.lanes.find(l => l.id === parentLaneId)?.participant ?? ''
+      if (participant) ltTokenParentTier = ensureWordTier(participant)
     }
-    const tokenSpeaker = ltTokenParentTier?.participant ?? null
+    const tokenParticipant = ltTokenParentTier?.participant ?? null
 
-    const newTier = store.addTier(vals.name.trim(), {
+    const newTier = store.addTier(fullName, {
       ...(vals.participant  ? { participant:      vals.participant } : {}),
       ...(ltId              ? { linguisticTypeId: ltId }            : {}),
       ...(ltTokenParentTier ? { parentTierId: ltTokenParentTier.id } : {}),
@@ -3546,16 +3639,16 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     store.transact(() => {
       const isWordLane = !!(ltTokenParentTier || parentLaneId.startsWith('tokens:'))
       if (isSymbolic && !annParentId && !isWordLane && (vals.participant || vals.inlineGloss)) {
-        const speaker = vals.participant || null
+        const filterParticipant = vals.participant || null
         _addDoc.forEach((node: Node) => {
-          if (node.type.name === 'utterance' && (!speaker || node.attrs.participant === speaker))
+          if (node.type.name === 'utterance' && (!filterParticipant || node.attrs.participant === filterParticipant))
             store.addAnnotation('', [], { tierId: newTier.id, blockNodeId: node.attrs.id as ID })
         })
       }
-      // Word-child annotations: named lt-word lanes (ann:ltWordId) or generic word lanes (words:speaker:X)
-      if (tokenSpeaker !== null && isSymbolic) {
+      // Word-child annotations: named lt-word lanes (ann:ltWordId) or generic token lanes (tokens:${participant})
+      if (tokenParticipant !== null && isSymbolic) {
         _addDoc.forEach((block: Node) => {
-          if (block.type.name !== 'utterance' || block.attrs.participant !== tokenSpeaker) return
+          if (block.type.name !== 'utterance' || block.attrs.participant !== tokenParticipant) return
           for (const tok of tokenStore.getUttTokens(block.attrs.id as ID)) {
             if (tok.kind !== 'ws')
               store.addAnnotation('', [], { tierId: newTier.id, tokenNodeId: tok.id })
@@ -3569,7 +3662,7 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
         _autoPopulateChildTiers(parentAnn)
       }
     }
-    if (tokenSpeaker !== null && isSymbolic && !showGlosses) {
+    if (tokenParticipant !== null && isSymbolic && !showGlosses) {
       showGlosses = true
       setGlossesVisible(true)
     }
@@ -3598,16 +3691,16 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     assignLingTypeDlg = { ...assignLingTypeDlg, open: false }
   }
 
-  function confirmLinkSpeaker(participant: string) {
-    const tierId = linkSpeakerDlg.tierId
-    linkSpeakerDlg = { ...linkSpeakerDlg, open: false }
+  function confirmLinkParticipant(participant: string) {
+    const tierId = linkParticipantDlg.tierId
+    linkParticipantDlg = { ...linkParticipantDlg, open: false }
     const tier = store.getTier(tierId)
     if (!tier) return
 
     const ltId = ensureLinguisticType('symbolic_association')
     store.updateTier(tierId, { participant, linguisticTypeId: ltId })
 
-    // Build utterance time index for this speaker
+    // Build utterance time index for this participant
     const doc = editorRef?.liveDoc() ?? currentDoc
     const uttByTime: Array<{ id: string; start: number; end: number }> = []
     doc.forEach((node: Node) => {
@@ -3695,12 +3788,13 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     if (next !== null && next.trim()) documentLanguage = next.trim()
   }
 
-  function saveEAF() {
+  function saveEAF(includeTokenTiers: boolean) {
     const primaryTrack = multiPlayer.primary?.track
     const opts: import('./formats.js').ExportOpts = {
       language: documentLanguage,
       ...(primaryTrack?.mediaUrl !== undefined ? { mediaUrl: primaryTrack.mediaUrl } : {}),
       ...(primaryTrack?.offsetSec ? { timeOriginMs: Math.round(primaryTrack.offsetSec * 1000) } : {}),
+      includeTokenTiers,
     }
     fc.downloadExport('eaf', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store, tokenStore, opts })
   }
@@ -4077,11 +4171,11 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
   <div class="ctx-menu" use:clampToViewport style="left:{ctxMenu.x}px; top:{ctxMenu.y}px">
     {#if ctxIsAnnotationTier}
       <button onclick={ctxAddChildTier}>Add child tier…</button>
-      <button onclick={ctxRenameTier}>Rename…</button>
+      <button onclick={ctxEditTier}>Edit tier…</button>
       <button onclick={ctxAssignLingType}>Assign linguistic type…</button>
       <button onclick={ctxAssignVocab}>Assign vocabulary…</button>
       {#if !store.getTier(ctxMenu.tierId)?.participant}
-        <button onclick={ctxLinkToSpeaker}>Link to speaker…</button>
+        <button onclick={ctxLinkToParticipant}>Link to participant…</button>
       {/if}
       {#if store.resolveTierConstraint(ctxMenu.tierId) === 'symbolic_association'}
         <button onclick={ctxToggleInlineGloss}>
@@ -4095,7 +4189,7 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
       {@const _uttLane = timelineData.lanes.find(l => l.id === ctxMenu.laneId)}
       <span class="ctx-label">Tier: {_uttLane?.label ?? ctxMenu.laneId}</span>
       <button onclick={ctxEditUttTier}>Edit tier…</button>
-      <button onclick={ctxAddSpeakerSubTier}>Add child tier…</button>
+      <button onclick={ctxAddParticipantSubTier}>Add child tier…</button>
       <button onclick={addTier}>New annotation tier…</button>
     {:else if ctxMenu.laneId.startsWith('tokens:') || tiers.some(t => t.id === ctxMenu.tierId && isTokenLtId(t.linguisticTypeId))}
       {@const _tokenTier = tiers.find(t => t.id === ctxMenu.tierId && isTokenLtId(t.linguisticTypeId))}
@@ -4145,12 +4239,27 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
   </div>
 {/if}
 
+{#if editTierDlg.open}
+  {@const _editTier = store.getTier(editTierDlg.tierId)}
+  {#if _editTier}
+    <EditTierDlg
+      name={tierBaseName(_editTier)}
+      participant={_editTier.participant ?? ''}
+      {participants}
+      validateName={(n, p) => tierNameError(n, p, editTierDlg.tierId)}
+      onconfirm={confirmEditTier}
+      onclose={() => editTierDlg = { ...editTierDlg, open: false }}
+    />
+  {/if}
+{/if}
+
 {#if addTierDlg.open}
   <AddTierDlg
     participant={addTierDlg.participant}
     parentLaneId={addTierDlg.parentLaneId}
     {lingTypes}
     {participants}
+    validateName={tierNameError}
     onconfirm={confirmAddTier}
     onclose={() => addTierDlg = { ...addTierDlg, open: false }}
   />
@@ -4204,20 +4313,20 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
   />
 {/if}
 
-{#if linkSpeakerDlg.open}
-  {@const _linkTier = store.getTier(linkSpeakerDlg.tierId)}
-  {@const _linkSpeakers = (() => {
+{#if linkParticipantDlg.open}
+  {@const _linkTier = store.getTier(linkParticipantDlg.tierId)}
+  {@const _linkParticipants = (() => {
     const seen = new SvelteSet<string>()
     ;(editorRef?.liveDoc() ?? currentDoc).forEach((n: Node) => {
       if (n.type.name === 'utterance' && n.attrs.participant) seen.add(n.attrs.participant as string)
     })
     return [...seen].sort()
   })()}
-  <LinkSpeakerDlg
+  <LinkParticipantDlg
     tierName={_linkTier?.name ?? ''}
-    speakers={_linkSpeakers}
-    onconfirm={confirmLinkSpeaker}
-    onclose={() => linkSpeakerDlg = { ...linkSpeakerDlg, open: false }}
+    participants={_linkParticipants}
+    onconfirm={confirmLinkParticipant}
+    onclose={() => linkParticipantDlg = { ...linkParticipantDlg, open: false }}
   />
 {/if}
 
@@ -4552,7 +4661,7 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
           <button onclick={() => {
             openMenu = null
             if (isElectron) { type EApi = { newWindow(): void }; (window as unknown as { electronAPI: EApi }).electronAPI.newWindow() }
-            else newDoc()
+            else window.open(location.href, '_blank')
           }}>New</button>
           {#if _showFileOpen}
           <div class="mb-sub-wrap">
@@ -4571,7 +4680,13 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
             <div class="mb-sub-drop">
               <button onclick={() => { openMenu = null; void saveMumoAs() }}>Save .mumo As…</button>
               <button onclick={() => { openMenu = null; saveMMEAF() }}>Save MMEAF</button>
-              <button onclick={() => { openMenu = null; saveEAF() }}>Save EAF</button>
+              <div class="mb-sub-wrap">
+                <button onclick={() => { openMenu = null; saveEAF(false) }}>Save EAF <span class="mb-arrow">▶</span></button>
+                <div class="mb-sub-drop">
+                  <button onclick={() => { openMenu = null; saveEAF(true) }}>With token tiers</button>
+                  <button onclick={() => { openMenu = null; saveEAF(false) }}>Without token tiers</button>
+                </div>
+              </div>
               <button onclick={() => { openMenu = null; saveJSON() }}>Save JSON</button>
             </div>
           </div>
@@ -4886,7 +5001,7 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
         <span class="ech ech-linenum" aria-hidden="true">#</span>
         <span class="ech ech-time ech-time-start" aria-hidden="true">start</span>
         <span class="ech ech-time ech-time-end" aria-hidden="true">end</span>
-        <span class="ech ech-speaker" aria-hidden="true">participant</span>
+        <span class="ech ech-participant" aria-hidden="true">participant</span>
         <div class="ech ech-content">
           <TranscriptToolbar
             getView={() => editorRef?.getView()}
@@ -5811,7 +5926,7 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
     flex-direction: column;
     z-index: 301;
   }
-  .mb-sub-wrap:hover .mb-sub-drop { display: flex; }
+  .mb-sub-wrap:hover > .mb-sub-drop { display: flex; }
   .mb-arrow { font-size: 9px; color: #999; }
 
   .mb-drop-right { left: auto; right: 0; }
@@ -5969,7 +6084,7 @@ if (assignVocabDlg.open)  assignVocabDlg  = { ...assignVocabDlg,  open: false }
   }
   .ech-linenum { flex-shrink: 0; width: 2rem; text-align: right; }
   .ech-time    { flex-shrink: 0; width: 6.5rem; }
-  .ech-speaker { flex-shrink: 0; width: 4rem; text-align: right; }
+  .ech-participant { flex-shrink: 0; width: 4rem; text-align: right; }
   .ech-content { flex: 1; display: flex; align-items: center; overflow: visible; padding-left: 5rem; }
 
   .ech-mode-group {

@@ -81,12 +81,12 @@
     const css = action === 'accept' ? [
       // Hide current text (including ::after colon) and overlay replacement via ::before.
       // ::before uses inset:0 + text-align:right to match the original right-aligned layout.
-      `[data-id="${id}"] .utt-speaker { color: transparent !important; position: relative !important; background: #dcfce7 !important; outline-color: #16a34a !important; }`,
-      `[data-id="${id}"] .utt-speaker::after { color: transparent !important; }`,
-      `[data-id="${id}"] .utt-speaker::before { content: "${p}:"; position: absolute; inset: 0; text-align: right; color: #15803d; }`,
+      `[data-id="${id}"] .utt-participant { color: transparent !important; position: relative !important; background: #dcfce7 !important; outline-color: #16a34a !important; }`,
+      `[data-id="${id}"] .utt-participant::after { color: transparent !important; }`,
+      `[data-id="${id}"] .utt-participant::before { content: "${p}:"; position: absolute; inset: 0; text-align: right; color: #15803d; }`,
     ] : [
       // Reject preview: suggestion goes away — remove yellow highlight
-      `[data-id="${id}"] .utt-speaker { background: transparent !important; outline: none !important; }`,
+      `[data-id="${id}"] .utt-participant { background: transparent !important; outline: none !important; }`,
     ]
     _getPreviewStyleEl().textContent = css.join('\n')
   }
@@ -118,7 +118,7 @@
     const rules: string[] = []
     for (const uttId of next.keys()) {
       const esc = CSS.escape(uttId)
-      rules.push(`[data-id="${esc}"] .utt-speaker { background: #fef9c3; outline: 1.5px solid #ca8a04; border-radius: 2px; cursor: pointer; }`)
+      rules.push(`[data-id="${esc}"] .utt-participant { background: #fef9c3; outline: 1.5px solid #ca8a04; border-radius: 2px; cursor: pointer; }`)
     }
     _getHighlightStyleEl().textContent = rules.join('\n')
   }
@@ -146,8 +146,8 @@
       }
     }
 
-    // utt:set-participant — hovered the speaker label
-    const speakerEl = target?.closest('.utt-speaker') as HTMLElement | null
+    // utt:set-participant — hovered the participant label
+    const speakerEl = target?.closest('.utt-participant') as HTMLElement | null
     if (speakerEl) {
       const rowEl = speakerEl.closest('[data-id]') as HTMLElement | null
       const uttId = rowEl?.getAttribute('data-id')

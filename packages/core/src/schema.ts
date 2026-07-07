@@ -112,7 +112,7 @@ const imageNode: NodeSpec = {
 /**
  * A visualization block. Has inline content (images, overlap brackets, inline
  * annotations, text) so images can be aligned with overlap brackets. Can be
- * independent (its own time range) or tied to a speaker lane.
+ * independent (its own time range) or tied to a participant lane.
  */
 const visualizationNode: NodeSpec = {
   group: 'block',
@@ -124,8 +124,8 @@ const visualizationNode: NodeSpec = {
     label: { default: '' },
     startTimeSeconds: { default: null },
     endTimeSeconds: { default: null },
-    participant: { default: '' },     // ties to speaker:${participant} lane
-    tier: { default: '' },            // sub-lane label within the speaker lane
+    participant: { default: '' },     // ties to participant column
+    tier: { default: '' },            // participant timeline
     dependent: { default: false },    // if true, times follow parentNodeId
     parentNodeId: { default: null },  // id of the utterance this viz tracks
   },

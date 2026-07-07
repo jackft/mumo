@@ -2,11 +2,13 @@
   import { untrack } from 'svelte'
   import type { LinguisticType, TierConstraint, ParticipantJSON } from '@mumo/core'
 
-  const { participant = '', parentLaneId = '', lingTypes, participants = [], onconfirm, onclose }: {
+  const { participant = '', parentLaneId = '', lingTypes, participants = [], validateName, onconfirm, onclose }: {
     participant?: string
     parentLaneId?: string
     lingTypes: LinguisticType[]
     participants?: ParticipantJSON[]
+    /** Returns an error message if (name, participant) can't be used, else null. */
+    validateName?: (name: string, participant: string) => string | null
     onconfirm: (vals: { name: string; participant: string; linguisticTypeId: string; constraint: TierConstraint | ''; inlineGloss: boolean }) => void
     onclose: () => void
   } = $props()
@@ -25,6 +27,8 @@
     : isAnnChild ? 'New sub-tier'
     : 'New annotation tier'
   )
+  const nameError = $derived(validateName?.(name, participantVal) ?? null)
+  const finalName = $derived(participantVal && name.trim() && participantVal !== name.trim() ? `${name.trim()}:${participantVal}` : name.trim())
 </script>
 
 <button class="dlg-backdrop" onclick={onclose} aria-label="Close dialog"></button>
@@ -35,6 +39,11 @@
     <!-- svelte-ignore a11y_autofocus -->
     <input bind:value={name} placeholder="e.g. gesture" autofocus />
   </label>
+  {#if nameError}
+    <p class="name-error">{nameError}</p>
+  {:else if finalName && finalName !== name.trim()}
+    <p class="name-preview">Will be created as <b>{finalName}</b></p>
+  {/if}
   <label class="checkbox-label">
     <input
       type="checkbox"
@@ -80,10 +89,20 @@
   </label>
   <div class="dlg-actions">
     <button onclick={onclose}>Cancel</button>
-    <button class="add-btn" onclick={() => onconfirm({ name, participant: participantVal, linguisticTypeId, constraint, inlineGloss: isGlossTier })} disabled={!name.trim() || ((isChild || isGlossTier) && !constraint && !linguisticTypeId)}>Add</button>
+    <button class="add-btn" onclick={() => onconfirm({ name, participant: participantVal, linguisticTypeId, constraint, inlineGloss: isGlossTier })} disabled={!name.trim() || !!nameError || ((isChild || isGlossTier) && !constraint && !linguisticTypeId)}>Add</button>
   </div>
 </div>
 
 <style>
   .dlg { min-width: 380px; }
+  .name-error {
+    margin: 2px 0 0;
+    font-size: 0.78rem;
+    color: var(--color-danger, #c0392b);
+  }
+  .name-preview {
+    margin: 2px 0 0;
+    font-size: 0.78rem;
+    color: var(--color-text-2, #777);
+  }
 </style>

@@ -100,14 +100,14 @@
     return '(textlet)'
   }
 
-  function getUttSpeaker(uttId: string): string {
-    let speaker = ''
+  function getUttParticipant(uttId: string): string {
+    let participant = ''
     doc.forEach(node => {
       if (node.attrs['id'] === uttId) {
-        speaker = String(node.attrs['participant'] ?? node.attrs['speaker'] ?? '')
+        participant = String(node.attrs['participant'] ?? '')
       }
     })
-    return speaker || uttId.slice(0, 6)
+    return participant || uttId.slice(0, 6)
   }
 
   function uttTextAround(uttId: string, from: number, to: number): string {
@@ -132,18 +132,18 @@
     switch (c.type) {
       case 'pm:replace': {
         const old = uttTextAround(c.uttId, c.fromOffset, c.toOffset)
-        const speaker = getUttSpeaker(c.uttId)
-        if (c.fromOffset === c.toOffset) return rl(`insert: "${c.replacement}"`, 'add', speaker)
-        if (c.replacement === '')        return rl(old ? `delete: "${truncate(old, 30)}"` : 'delete text', 'remove', speaker)
-        return rl(old ? `"${truncate(old, 25)}" → "${c.replacement}"` : `→ "${c.replacement}"`, 'update', speaker)
+        const participant = getUttParticipant(c.uttId)
+        if (c.fromOffset === c.toOffset) return rl(`insert: "${c.replacement}"`, 'add', participant)
+        if (c.replacement === '')        return rl(old ? `delete: "${truncate(old, 30)}"` : 'delete text', 'remove', participant)
+        return rl(old ? `"${truncate(old, 25)}" → "${c.replacement}"` : `→ "${c.replacement}"`, 'update', participant)
       }
       case 'utt:set-participant': {
-        const speaker = getUttSpeaker(c.uttId)
-        return rl(`speaker → ${c.participant}`, 'update', speaker ? `was: ${speaker}` : undefined)
+        const participant = getUttParticipant(c.uttId)
+        return rl(`participant → ${c.participant}`, 'update', participant ? `was: ${participant}` : undefined)
       }
       case 'utt:set-time': {
-        const speaker = getUttSpeaker(c.uttId)
-        return rl(`time → ${c.startTime.toFixed(2)}–${c.endTime.toFixed(2)}s`, 'update', speaker)
+        const participant = getUttParticipant(c.uttId)
+        return rl(`time → ${c.startTime.toFixed(2)}–${c.endTime.toFixed(2)}s`, 'update', participant)
       }
       case 'textlet:add': {
         const a = c.annotation

@@ -13,6 +13,7 @@ import type { TokenRecord } from '@mumo/core'
 import type { PMNodeJSON } from '../src/types.js'
 import { readFileSync, existsSync } from 'fs'
 import { resolve } from 'path'
+import { validateEAF } from './xsd-validate.js'
 
 // helpers
 
@@ -27,11 +28,11 @@ function makeDocAndStore(
     participant?: string
     startTimeSeconds: number
     endTimeSeconds: number
-    tokens: Array<{ kind: string; id?: string; text: string; start?: number; end?: number }>
+    tokens: Array<{ kind: string; id?: string; text: string; start?: number | null; end?: number | null }>
   }>
 ): { doc: PMNodeJSON; tokenStore: TokenStore; annotationStore: AnnotationStore } {
   const tokenRecords: TokenRecord[] = []
-  const tokenTimes: Record<string, { start: number; end: number }> = {}
+  const tokenTimes: Record<string, { start: number | null; end: number | null }> = {}
   const docBlocks = blocks.map(b => {
     const blockId = newId()
     let offset = 0
@@ -43,8 +44,8 @@ function makeDocAndStore(
         text: t.text,
         startOffset: offset, endOffset: offset + t.text.length,
       })
-      if (t.start != null && t.end != null) {
-        tokenTimes[id] = { start: t.start, end: t.end }
+      if (t.start !== undefined || t.end !== undefined) {
+        tokenTimes[id] = { start: t.start ?? null, end: t.end ?? null }
       }
       offset += t.text.length
     }
@@ -102,8 +103,86 @@ describe('emitMMEAF — XML structure', () => {
       tokens: [{ kind: 'word', text: 'hi' }],
     }])
     const xml = emitMMEAF(doc, annotationStore, {}, tokenStore)
-    expect(xml).toContain('TIER_ID="participant:A"')
+    expect(xml).toContain('TIER_ID="utterance:A"')
     expect(xml).toContain('<ALIGNABLE_ANNOTATION')
+  })
+
+  it('includeWords emits token tiers named tokens:<participant> with PARENT_REF and PARTICIPANT', () => {
+    const { doc, tokenStore, annotationStore } = makeDocAndStore([{
+      type: 'utterance', participant: 'A', startTimeSeconds: 0, endTimeSeconds: 1,
+      tokens: [{ kind: 'word', text: 'hi', start: 0, end: 1 }],
+    }])
+    const xml = emitEAF(doc, annotationStore, { includeWords: true, tokenStore })
+    expect(xml).toContain('TIER_ID="tokens:A"')
+    expect(xml).toContain('PARENT_REF="utterance:A"')
+    expect(xml).toMatch(/TIER_ID="tokens:A"[^>]*PARTICIPANT="A"/)
+    validateEAF(xml)
+  })
+
+  it('exports fully-timed token tiers as Time_Subdivision ALIGNABLE annotations', () => {
+    const { doc, tokenStore, annotationStore } = makeDocAndStore([{
+      type: 'utterance', participant: 'A', startTimeSeconds: 0, endTimeSeconds: 2,
+      tokens: [{ kind: 'word', text: 'hi', start: 0, end: 1 }, { kind: 'word', text: 'there', start: 1, end: 2 }],
+    }])
+    const xml = emitEAF(doc, annotationStore, { includeWords: true, tokenStore })
+    expect(xml).toContain('<TIER LINGUISTIC_TYPE_REF="lt-token-ts" TIER_ID="tokens:A"')
+    expect(xml).toMatch(/LINGUISTIC_TYPE_ID="lt-token-ts" TIME_ALIGNABLE="true" CONSTRAINTS="Time_Subdivision"/)
+    const tokenTier = xml.slice(xml.indexOf('TIER_ID="tokens:A"'), xml.indexOf('</TIER>', xml.indexOf('TIER_ID="tokens:A"')))
+    expect(tokenTier).toContain('<ALIGNABLE_ANNOTATION')
+    validateEAF(xml)
+  })
+
+  it('exports promoted lanes (edge anchors only) as Time_Subdivision with interpolated boundaries', () => {
+    // Lane promotion stores open-sided edge anchors: first {start, null}, last {null, end};
+    // interior tokens stay unstored. This is still a time-subdivision lane.
+    const { doc, tokenStore, annotationStore } = makeDocAndStore([{
+      type: 'utterance', participant: 'A', startTimeSeconds: 0, endTimeSeconds: 3,
+      tokens: [
+        { kind: 'word', text: 'a', start: 0, end: null },
+        { kind: 'word', text: 'b' },
+        { kind: 'word', text: 'c', start: null, end: 3 },
+      ],
+    }])
+    const xml = emitEAF(doc, annotationStore, { includeWords: true, tokenStore })
+    expect(xml).toContain('<TIER LINGUISTIC_TYPE_REF="lt-token-ts" TIER_ID="tokens:A"')
+    const tokenTier = xml.slice(xml.indexOf('TIER_ID="tokens:A"'), xml.indexOf('</TIER>', xml.indexOf('TIER_ID="tokens:A"')))
+    expect((tokenTier.match(/<ALIGNABLE_ANNOTATION/g) ?? []).length).toBe(3)
+    // unstored inner boundaries interpolate evenly across the utterance span
+    expect(xml).toContain('TIME_VALUE="1000"')
+    expect(xml).toContain('TIME_VALUE="2000"')
+    validateEAF(xml)
+  })
+
+  it('exports lt-token-ii TierDef tiers as Included_In, skipping untimed tokens', () => {
+    const { doc, tokenStore, annotationStore } = makeDocAndStore([{
+      type: 'utterance', participant: 'A', startTimeSeconds: 0, endTimeSeconds: 2,
+      tokens: [{ kind: 'word', text: 'hi', start: 0.2, end: 0.8 }, { kind: 'word', text: 'there' }],
+    }])
+    annotationStore.addTier('tokens:A', { linguisticTypeId: 'lt-token-ii', participant: 'A' })
+    const xml = emitEAF(doc, annotationStore, { includeWords: true, tokenStore })
+    expect(xml).toContain('<TIER LINGUISTIC_TYPE_REF="lt-token-ii" TIER_ID="tokens:A"')
+    expect(xml).toMatch(/LINGUISTIC_TYPE_ID="lt-token-ii" TIME_ALIGNABLE="true" CONSTRAINTS="Included_In"/)
+    const tokenTier = xml.slice(xml.indexOf('TIER_ID="tokens:A"'), xml.indexOf('</TIER>', xml.indexOf('TIER_ID="tokens:A"')))
+    expect(tokenTier).toContain('>hi<')
+    expect(tokenTier).not.toContain('>there<')
+    validateEAF(xml)
+  })
+
+  it('includeWords exports tokens as Symbolic_Subdivision REF_ANNOTATION chains', () => {
+    const { doc, tokenStore, annotationStore } = makeDocAndStore([{
+      type: 'utterance', participant: 'A', startTimeSeconds: 0, endTimeSeconds: 2,
+      tokens: [{ kind: 'word', text: 'hi' }, { kind: 'ws', text: ' ' }, { kind: 'word', text: 'there' }],
+    }])
+    const xml = emitEAF(doc, annotationStore, { includeWords: true, tokenStore })
+    const tokenTier = xml.slice(xml.indexOf('TIER_ID="tokens:A"'), xml.indexOf('</TIER>', xml.indexOf('TIER_ID="tokens:A"')))
+    // both words emitted as REF_ANNOTATIONs (ws skipped), chained via PREVIOUS_ANNOTATION
+    expect(tokenTier).toContain('>hi<')
+    expect(tokenTier).toContain('>there<')
+    expect(tokenTier).toContain('<REF_ANNOTATION')
+    expect(tokenTier).toContain('PREVIOUS_ANNOTATION=')
+    // the token LT is symbolic, not time-alignable
+    expect(xml).toMatch(/LINGUISTIC_TYPE_ID="lt-token"[^>]*TIME_ALIGNABLE="false"[^>]*CONSTRAINTS="Symbolic_Subdivision"/)
+    validateEAF(xml)
   })
 })
 

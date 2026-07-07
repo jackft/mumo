@@ -930,8 +930,8 @@
           title="Regex mode: text fields are regular expressions">.*</button>
       {/if}
       {#if resultKind !== 'bookmarks'}
-        <select class="cv-facet" bind:value={selectedSpeaker} onchange={newSearch} title="Filter by speaker">
-          <option value="">All speakers</option>
+        <select class="cv-facet" bind:value={selectedSpeaker} onchange={newSearch} title="Filter by participant">
+          <option value="">All participants</option>
           {#each speakerOptions as sp (sp)}<option value={sp}>{sp}</option>{/each}
         </select>
       {/if}
@@ -1105,7 +1105,7 @@
                 {#if ri > 0}<span class="cv-adv-label">and</span>{/if}
                 <select class="cv-facet" bind:value={row.kind} onchange={newSearch}>
                   <option value="contains">contains</option>
-                  <option value="speaker">speaker is</option>
+                  <option value="speaker">participant is</option>
                   <option value="pattern">in pattern</option>
                   <option value="tier">has annotation</option>
                 </select>
@@ -1114,7 +1114,7 @@
                     bind:value={row.text} oninput={onSearchInput} />
                 {:else if row.kind === 'speaker'}
                   <select class="cv-facet" bind:value={row.speaker} onchange={newSearch}>
-                    <option value="">— pick speaker —</option>
+                    <option value="">— pick participant —</option>
                     {#each speakerOptions as sp (sp)}<option value={sp}>{sp}</option>{/each}
                   </select>
                 {:else if row.kind === 'tier'}
@@ -1181,8 +1181,8 @@
           bind:value={searchTextB}
           oninput={onSearchInput}
         />
-        <select class="cv-facet" bind:value={selectedSpeakerB} onchange={newSearch} title="Speaker of the following utterance">
-          <option value="">any speaker</option>
+        <select class="cv-facet" bind:value={selectedSpeakerB} onchange={newSearch} title="Participant of the following utterance">
+          <option value="">any participant</option>
           {#each speakerOptions as sp (sp)}<option value={sp}>{sp}</option>{/each}
         </select>
         <span class="cv-adv-label">within</span>
@@ -1293,13 +1293,13 @@
                   <div class="cv-frag-row cv-seq-hit">
                     <div class="cv-seq-lines">
                       <div class="cv-seq-line">
-                        {#if hit.a.speaker}<span class="cv-speaker-chip">{hit.a.speaker}</span>{/if}
+                        {#if hit.a.speaker}<span class="cv-participant-chip">{hit.a.speaker}</span>{/if}
                         <span class="cv-utt-text">{hit.a.text}</span>
                         {#if hit.a.startS != null}<span class="cv-frag-time">{formatTime(hit.a.startS)}</span>{/if}
                       </div>
                       <div class="cv-seq-line">
                         <span class="cv-seq-arrow" title={hit.gap === 1 ? 'next utterance' : `${hit.gap} utterances later`}>↳{hit.gap > 1 ? ` +${hit.gap}` : ''}</span>
-                        {#if hit.b.speaker}<span class="cv-speaker-chip">{hit.b.speaker}</span>{/if}
+                        {#if hit.b.speaker}<span class="cv-participant-chip">{hit.b.speaker}</span>{/if}
                         <span class="cv-utt-text">{hit.b.text}</span>
                         {#if hit.b.startS != null}<span class="cv-frag-time">{formatTime(hit.b.startS)}</span>{/if}
                       </div>
@@ -1329,7 +1329,7 @@
               {#each group.items as item (item.utteranceId)}
                 <div class="cv-frag-row">
                   <div class="cv-frag-info">
-                    {#if item.speaker}<span class="cv-speaker-chip">{item.speaker}</span>{/if}
+                    {#if item.speaker}<span class="cv-participant-chip">{item.speaker}</span>{/if}
                     <span class="cv-utt-text" title={item.text}>{item.snippet ?? item.text}</span>
                     {#if item.startS != null && item.endS != null}
                       <span class="cv-frag-time">{formatTime(item.startS)} – {formatTime(item.endS)}</span>
@@ -1401,7 +1401,7 @@
                   <div class="cv-frag-info cv-bookmark-info">
                     <div class="cv-bookmark-head">
                       <span class="cv-schema-chip">{item.tierName}</span>
-                      {#if item.participant}<span class="cv-speaker-chip">{item.participant}</span>{/if}
+                      {#if item.participant}<span class="cv-participant-chip">{item.participant}</span>{/if}
                       <span class="cv-frag-label" title={item.value}>{item.snippet ?? item.value}</span>
                       {#if item.startS != null && item.endS != null}
                         <span class="cv-frag-time">{formatTime(item.startS)} – {formatTime(item.endS)}</span>
@@ -1439,7 +1439,7 @@
                   <div class="cv-frag-info cv-pattern-info">
                     <div class="cv-pattern-head">
                       <span class="cv-schema-chip">{item.schemaName}</span>
-                      {#if item.speakers}<span class="cv-speaker-chip">{item.speakers}</span>{/if}
+                      {#if item.speakers}<span class="cv-participant-chip">{item.speakers}</span>{/if}
                       {#if item.startS != null && item.endS != null}
                         <span class="cv-frag-time">{formatTime(item.startS)} – {formatTime(item.endS)}</span>
                       {/if}
@@ -1968,7 +1968,7 @@
   }
 
   /* ── Utterance / pattern rows ── */
-  .cv-speaker-chip {
+  .cv-participant-chip {
     font-size: 0.68rem;
     font-weight: 600;
     background: var(--color-bg-2);

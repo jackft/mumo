@@ -1136,7 +1136,7 @@
         const yRange = yMax - yMin || 1
         const vpad = sl.specH * 0.08
         const drawH = sl.specH - vpad * 2
-        const color = ch.color ?? (ch.kind === 'waveform' ? palette.primary : palette.speakerColors[1]!)
+        const color = ch.color ?? (ch.kind === 'waveform' ? palette.primary : palette.participantColors[1]!)
 
         let penDown = false
         for (const [st, v] of ch.samples) {
@@ -1238,7 +1238,7 @@
     for (const lane of visibleLanes()) {
       const lo = layouts.get(lane.id)
       if (!lo) continue
-      const isGroupStart = laneIdx > 0 && (lane.id.startsWith('participant:') || lane.id.startsWith('evt::'))
+      const isGroupStart = laneIdx > 0 && (lane.type === 'participant' || lane.id.startsWith('evt::'))
       if (isGroupStart) {
         laneGfx.moveTo(0, lo.y).lineTo(w, lo.y).stroke({ width: 1.5, color: palette.separator })
       }
@@ -2603,7 +2603,7 @@
 
   function laneIndentLevel(lane: Lane): number {
     const id = lane.id
-    if (id.startsWith('participant:'))  return 0
+    if (lane.type === 'participant') return 0
     if (id.startsWith('tokens:'))    return 1
     if (id.startsWith('ann:'))      return 1 + (lane.depth ?? 0)
     if (id.startsWith('viz:'))      return 1 + (lane.depth ?? 0)
@@ -2663,7 +2663,7 @@
           lines.push({ x1: cx, y1: h / 2, x2: (c + 1) * INDENT_PX, y2: h / 2 })
         }
       }
-      const isGroupStart = i > 0 && (row.lane.id.startsWith('participant:') || row.lane.id.startsWith('evt::'))
+      const isGroupStart = i > 0 && (row.lane.type === 'participant' || row.lane.id.startsWith('evt::'))
       return { lane: row.lane, height: h, indent: row.indent, isGroupStart, svgLines: lines }
     })
   }
@@ -2711,7 +2711,7 @@
 
   function panelShowActor(lane: Lane): boolean {
     return !!(lane.participant && lane.participant !== lane.label &&
-      lane.participant !== '_general' && lane.type !== 'token')
+      lane.participant !== '_general')
   }
 
   const panelRows = $derived(buildPanelRows())

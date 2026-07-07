@@ -22,6 +22,7 @@ export function startFieldEdit(
     done = true
     el.contentEditable = 'false'
     view.dom.contentEditable = 'true'
+    el.removeEventListener('keydown', onKeydown)
     onCommit(el.textContent.trim(), returnFocus)
     if (returnFocus) view.focus()
   }
@@ -31,14 +32,17 @@ export function startFieldEdit(
     done = true
     el.contentEditable = 'false'
     view.dom.contentEditable = 'true'
+    el.removeEventListener('keydown', onKeydown)
     onCancel()
     view.focus()
   }
 
-  el.addEventListener('blur', () => { commit() }, { once: true })
-  el.addEventListener('keydown', (e) => {
+  const onKeydown = (e: KeyboardEvent) => {
     e.stopPropagation()
     if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); commit(true) }
     else if (e.key === 'Escape') { e.preventDefault(); cancel() }
-  }, { once: true })
+  }
+
+  el.addEventListener('blur', () => { commit() }, { once: true })
+  el.addEventListener('keydown', onKeydown)
 }

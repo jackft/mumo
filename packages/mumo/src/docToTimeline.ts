@@ -19,6 +19,23 @@ const PALETTE = [
   0xF0E442,  // yellow
 ]
 
+/** Base tier attr for lane computations: the reserved 'utterance' default is treated as none. */
+export function uttTierBase(tierAttr: string | null | undefined): string {
+  const t = tierAttr ?? ''
+  return t === 'utterance' ? '' : t
+}
+
+/** Lane ID for an utterance: <base>:<participant> for custom tiers, utterance:<participant>
+ *  by default, utterance:unknown when there is neither. Labels mirror IDs (always unique).
+ *  A suffix equal to the base is redundant and skipped (ELAN tier FA1 for participant FA1
+ *  stays FA1, not FA1:FA1). */
+export function uttLaneId(tierAttr: string | null | undefined, participant: string): string {
+  const base = uttTierBase(tierAttr)
+  return base
+    ? (participant && participant !== base ? `${base}:${participant}` : base)
+    : (participant ? `utterance:${participant}` : 'utterance:unknown')
+}
+
 // Main transform
 
 export function docToTimeline(
@@ -80,24 +97,22 @@ export function docToTimeline(
         !node.attrs.participant
       ) return
 
-      const speakerAttr: string | null = node.attrs.participant ?? null
-      const speaker: string = speakerAttr ?? ''
-      const tierAttr: string = (node.attrs.tier as string | undefined) ?? ''
-      // Lane ID is unique per (tier, participant) pair so two speakers sharing the same
-      // tier name each get their own row. Fall back to participant:<speaker> when no tier.
-      const laneId = tierAttr
-        ? (speaker ? `${tierAttr}:${speaker}` : tierAttr)
-        : `participant:${speaker}`
-      const tokenTierDef = participantTokenTier.get(speaker)
-      const tokenLaneId = tokenTierDef ? `ann:${tokenTierDef.id}` : `tokens:${laneId}`
+      const participant: string = (node.attrs.participant as string | null) ?? ''
+      const tierAttr = uttTierBase(node.attrs.tier as string | undefined)
+      const laneId = uttLaneId(tierAttr, participant)
+      // Token lane: tokens:<participant> or tokens:unknown (flat, no nested prefix)
+      const tokenTierDef = participantTokenTier.get(participant)
+      const tokenLaneId = tokenTierDef
+        ? `ann:${tokenTierDef.id}`
+        : (participant ? `tokens:${participant}` : 'tokens:unknown')
 
-      const c = colorFor(tierAttr || speaker)
+      const c = colorFor(tierAttr || participant)
       if (!laneMap.has(laneId)) {
-        laneMap.set(laneId, { id: laneId, label: tierAttr || '—', type: 'participant', participant: speaker, color: c })
+        laneMap.set(laneId, { id: laneId, label: laneId, type: 'participant', participant, color: c })
       }
       if (!laneMap.has(tokenLaneId)) {
         if (tokenTierDef) namedTokenLaneIds.add(tokenLaneId)
-        laneMap.set(tokenLaneId, { id: tokenLaneId, label: tokenTierDef?.name ?? 'tokens', type: 'token', participant: speaker, color: c })
+        laneMap.set(tokenLaneId, { id: tokenLaneId, label: tokenTierDef?.name ?? tokenLaneId, type: 'token', participant, color: c })
       }
 
       const rawStart: number | null = node.attrs.startTimeSeconds
@@ -452,8 +467,8 @@ export function docToTimeline(
   }
 
   // Lane ordering
-  // Insert viz child lanes tied to a specific speaker (viz:spk:speaker:type)
-  function insertSpkVizLanes(speaker: string) {
+  // Insert viz child lanes tied to a specific participant (viz:spk:participant:type)
+  function insertParticipantVizLanes(speaker: string) {
     const prefix = `viz:spk:${speaker}:`
     for (const [vid, vlane] of laneMap) {
       if (vid.startsWith(prefix)) reordered.set(vid, vlane)
@@ -465,25 +480,25 @@ export function docToTimeline(
   for (const [id, lane] of laneMap) {
     reordered.set(id, lane)
     if (lane.type === 'token') {
-      const speaker = lane.participant
+      const laneParticipant = lane.participant
       // Walk depth-first through orderedTiers, seeding from:
-      //   (a) root annotation tiers whose participant === speaker
-      //   (b) lt-word tiers for this speaker (which aren't annotation lanes themselves but whose
+      //   (a) root annotation tiers whose participant === laneParticipant
+      //   (b) lt-word tiers for this participant (which aren't annotation lanes themselves but whose
       //       children — e.g. EAF-imported POS tiers — should appear here)
       // Then transitively include all children, regardless of their own participant field,
       // so that child tiers added via addChildDlg (which inherit no participant) still land
       // directly under their parent.
       const placed = new Set<string>()
 
-      // Seed: lt-word tiers and isUttTier tiers for this speaker.
+      // Seed: lt-word tiers and isUttTier tiers for this participant.
       // isUttTier entries are invisible (skipped in the loop above) but act as transparent
-      // parents — their children (e.g. gloss tiers) should still land inside this speaker block.
+      // parents — their children (e.g. gloss tiers) should still land inside this participant block.
       for (const tier of orderedTiers) {
-        if (isTokenLtId(tier.linguisticTypeId) && tier.participant === speaker) placed.add(tier.id)
-        if (tier.isUttTier && tier.participant === speaker) placed.add(tier.id)
+        if (isTokenLtId(tier.linguisticTypeId) && tier.participant === laneParticipant) placed.add(tier.id)
+        if (tier.isUttTier && tier.participant === laneParticipant) placed.add(tier.id)
       }
 
-      // Pass 1: word-child tiers (children of this speaker's lt-word tier, recursively).
+      // Pass 1: token-child tiers (children of this participant's token tier, recursively).
       // These appear indented under the token lane.
       for (const tier of orderedTiers) {
         if (isTokenLtId(tier.linguisticTypeId)) continue
@@ -497,8 +512,8 @@ export function docToTimeline(
       }
 
       // Pass 2: children of already-placed tiers (recursively).
-      // Only tiers with an explicit parentTierId that chains back to this speaker block are nested here.
-      // Tiers with a participant but no parentTierId are top-level and will appear outside speaker blocks.
+      // Only tiers with an explicit parentTierId that chains back to this participant block are nested here.
+      // Tiers with a participant but no parentTierId are top-level and will appear outside participant blocks.
       for (const tier of orderedTiers) {
         if (isTokenLtId(tier.linguisticTypeId)) continue
         if (tier.isUttTier) continue
@@ -511,7 +526,7 @@ export function docToTimeline(
           if (annLane) reordered.set(annId, annLane)
         }
       }
-      insertSpkVizLanes(speaker)
+      insertParticipantVizLanes(laneParticipant)
     }
   }
 

@@ -2,7 +2,7 @@
  * EAF/ETF emitter: mumo → ELAN Annotation Format 3.0 XML.
  *
  * Strategy:
- *   - utterance nodes  → ALIGNABLE_ANNOTATIONs on `speaker:<label>` tiers
+ *   - utterance nodes  → ALIGNABLE_ANNOTATIONs on \`utterance:<participant>\` tiers
  *   - event nodes      → ALIGNABLE_ANNOTATIONs on `evt:<participant>:<tier>` tiers
  *   - word tokens      → ALIGNABLE_ANNOTATIONs on child word tiers (opt-in)
  *   - annotation store → TIER / LINGUISTIC_TYPE / CONTROLLED_VOCABULARY elements
@@ -88,11 +88,15 @@ export function buildEAFDocumentObject(
   type AnnRow = {
     mumoId: string
     ts1?: string; ts2?: string          // for alignable
+    parentMumoId?: string               // parent utterance (token rows)
+    tStart?: number | null              // stored token times in seconds (token rows);
+    tEnd?: number | null                //   null = open side (edge anchor), undefined = none stored
     value: string
   }
   const tierRows        = new Map<string, AnnRow[]>()
   const tierKind        = new Map<string, 'utterance'>()
   const tierParticipant = new Map<string, string>()
+  const uttSpanByBlock  = new Map<string, { start: number; end: number }>()
 
   const transcriptLtId     = 'lt-utterance'
   const transcriptWordLtId = 'lt-token'
@@ -103,13 +107,26 @@ export function buildEAFDocumentObject(
     return rows
   }
 
+  // Token TierDefs (hoisted above the doc pass: token collection depends on them)
+  const allTiers      = store.allTiers()
+  const ltWordTiers   = !isTemplate ? allTiers.filter(t => t.linguisticTypeId === 'lt-token' || t.linguisticTypeId === 'lt-token-ii') : []
+  const hasLtWordTier = ltWordTiers.length > 0 && !!tokenStore
+  const tokenTierByParticipant = new Map(ltWordTiers.filter(t => t.participant).map(t => [t.participant!, t]))
+
   if (!isTemplate) {
     for (const node of doc.content ?? []) {
       if (node.type === 'utterance') {
         const attrs = node.attrs ?? {}
-        const participant: string = (attrs['participant'] as string | undefined) ?? 'unknown'
-        const tierAttr: string    = (attrs['tier']        as string | undefined) ?? ''
-        const tierId = tierAttr || `participant:${participant}`
+        const participant: string = (attrs['participant'] as string | undefined) || 'unknown'
+        const tierAttrRaw: string = (attrs['tier']        as string | undefined) ?? ''
+        // 'utterance' is the reserved default tier attr — same as no custom tier
+        const tierAttr = tierAttrRaw === 'utterance' ? '' : tierAttrRaw
+        // TIER_IDs must be unique: custom base names get the participant suffix appended,
+        // matching the timeline lane IDs (turn:ACT); default tiers are utterance:<participant>.
+        // A suffix equal to the base is redundant and skipped (FA1, not FA1:FA1).
+        const tierId = tierAttr
+          ? (participant !== 'unknown' && participant !== tierAttr ? `${tierAttr}:${participant}` : tierAttr)
+          : `utterance:${participant}`
         tierKind.set(tierId, 'utterance')
         if (participant && participant !== 'unknown') tierParticipant.set(tierId, participant)
         const s: number | null = (attrs['startTimeSeconds'] as number | null) ?? null
@@ -120,15 +137,17 @@ export function buildEAFDocumentObject(
         const blockId = attrs['id'] as string
         ensureTierRows(tierId).push({ mumoId: blockId, ts1, ts2, value: baseTextContent(node) })
 
-        if (includeWords && tokenStore) {
+        if ((includeWords || hasLtWordTier) && tokenStore) {
+          uttSpanByBlock.set(blockId, { start: s, end: e ?? s + 1 })
+          const rows = ensureTierRows(`tokens:${tierId}`)
           for (const tok of tokenStore.getUttTokens(blockId)) {
+            if (tok.kind === 'ws') continue
+            // Stored times may be full spans, or open edge anchors ({start,null}/{null,end})
+            // from lane promotion — presence of any stored time marks the lane as promoted.
             const t = store.getTokenTime(tok.id)
-            if (!t || t.start === null || t.end === null) continue
-            ensureTierRows(`words:${tierId}`).push({
-              mumoId: tok.id,
-              ts1: pool.id(t.start),
-              ts2: pool.id(t.end),
-              value: tok.text,
+            rows.push({
+              mumoId: tok.id, parentMumoId: blockId, value: tok.text,
+              ...(t ? { tStart: t.start, tEnd: t.end } : {}),
             })
           }
         }
@@ -139,13 +158,9 @@ export function buildEAFDocumentObject(
 
   // Pass 2: store tiers
 
-  const allTiers        = store.allTiers()
   const linguisticTypes = store.allLinguisticTypes()
   const vocabularies    = store.allVocabularies()
   const annotations     = store.allAnnotations()
-
-  const ltWordTiers   = !isTemplate ? allTiers.filter(t => t.linguisticTypeId === 'lt-token' || t.linguisticTypeId === 'lt-token-ii') : []
-  const hasLtWordTier = ltWordTiers.length > 0 && !!tokenStore
 
   const annsByTier = new Map<string, typeof annotations>()
   for (const ann of annotations) {
@@ -185,8 +200,8 @@ export function buildEAFDocumentObject(
   }
   const descriptors: Record<string, unknown>[] = []
   if (mediaUrl) {
-    const d: Record<string, unknown> = { '@_MEDIA_URL': mediaUrl }
-    if (mimeType)                                          d['@_MIME_TYPE']          = mimeType
+    // MIME_TYPE is a required attribute — ELAN itself writes "unknown" when unresolvable
+    const d: Record<string, unknown> = { '@_MEDIA_URL': mediaUrl, '@_MIME_TYPE': mimeType || 'unknown' }
     if (timeOrigin !== undefined && timeOrigin !== 0)      d['@_TIME_ORIGIN']        = String(Math.round(timeOrigin))
     if (extractedFrom)                                     d['@_EXTRACTED_FROM']     = extractedFrom
     if (relativeMediaUrl)                                  d['@_RELATIVE_MEDIA_URL'] = relativeMediaUrl
@@ -194,8 +209,7 @@ export function buildEAFDocumentObject(
   }
   for (const m of additionalMedia ?? []) {
     if (!m.mediaUrl) continue
-    const d: Record<string, unknown> = { '@_MEDIA_URL': m.mediaUrl }
-    if (m.mimeType)                                            d['@_MIME_TYPE']          = m.mimeType
+    const d: Record<string, unknown> = { '@_MEDIA_URL': m.mediaUrl, '@_MIME_TYPE': m.mimeType || 'unknown' }
     if (m.timeOrigin !== undefined && m.timeOrigin !== 0)      d['@_TIME_ORIGIN']        = String(Math.round(m.timeOrigin))
     if (m.relativeMediaUrl)                                    d['@_RELATIVE_MEDIA_URL'] = m.relativeMediaUrl
     descriptors.push(d)
@@ -203,18 +217,7 @@ export function buildEAFDocumentObject(
   if (descriptors.length === 1)    headerObj['MEDIA_DESCRIPTOR'] = descriptors[0]
   else if (descriptors.length > 1) headerObj['MEDIA_DESCRIPTOR'] = descriptors
 
-  // TIME_ORDER
-
-  const timeOrderObj = !isTemplate
-    ? {
-        TIME_SLOT: pool.sorted().map(s => ({
-          '@_TIME_SLOT_ID': s.id,
-          ...(s.ms !== null ? { '@_TIME_VALUE': String(s.ms) } : {}),
-        })),
-      }
-    : undefined
-
-  // TIER elements
+  // TIER elements (TIME_ORDER is built afterwards — tier emission registers slots)
 
   const tierElems: Record<string, unknown>[] = []
 
@@ -236,75 +239,126 @@ export function buildEAFDocumentObject(
     tierElems.push(tierObj)
   }
 
-  // Word tiers (child of speaker/event tiers)
-  if (includeWords) {
-    for (const [tierId, rows] of tierRows) {
-      if (!tierId.startsWith('tokens:')) continue
-      const parentId = tierId.slice('tokens:'.length)
-      if (!tierKind.has(parentId)) continue
-      tierElems.push({
-        '@_LINGUISTIC_TYPE_REF': transcriptWordLtId,
-        '@_TIER_ID':             tierId,
-        '@_PARENT_TIER':         parentId,
-        ANNOTATION: rows.map(row => ({
+  // Word/token tiers (children of the utterance tiers). The tier's constraint follows
+  // mumo's internal model: lt-token-ii TierDefs → Included_In; all tokens carrying real
+  // stored times → Time_Subdivision; otherwise Symbolic_Subdivision REF_ANNOTATION
+  // chains (like ELAN's Tokenize Tier). Emitted when includeWords is set, or for
+  // participants that have a token TierDef (roundtrip of imported token tiers).
+  const usedTokenLts = new Set<string>()
+  for (const [tierId, rows] of tierRows) {
+    if (!tierId.startsWith('tokens:')) continue
+    const parentId = tierId.slice('tokens:'.length)
+    if (!tierKind.has(parentId)) continue
+    const tp      = tierParticipant.get(parentId)
+    const tierDef = tp ? tokenTierByParticipant.get(tp) : undefined
+    if (!includeWords && !tierDef) continue
+    if (rows.length === 0) continue
+
+    // Mirrors docToTimeline: a lane with ANY stored token time is a promoted
+    // (time subdivision) lane — promotion only anchors the edges with open-sided
+    // times, interior boundaries stay unstored until the user drags them.
+    const constraint = tierDef?.linguisticTypeId === 'lt-token-ii' ? 'included_in'
+      : rows.some(r => r.tStart !== undefined || r.tEnd !== undefined) ? 'time_subdivision'
+      : 'symbolic_subdivision'
+    const ltRef = constraint === 'included_in' ? 'lt-token-ii'
+      : constraint === 'time_subdivision' ? 'lt-token-ts'
+      : transcriptWordLtId
+    usedTokenLts.add(ltRef)
+
+    // tokens:<participant> for default utterance tiers, tokens:<customTier> otherwise;
+    // an imported TierDef keeps its own name.
+    const wordTierId = tierDef?.name || (parentId.startsWith('utterance:')
+      ? `tokens:${parentId.slice('utterance:'.length)}`
+      : tierId)
+
+    let annElems: Record<string, unknown>[]
+    if (constraint === 'symbolic_subdivision') {
+      const prevByParent = new Map<string, string>()
+      annElems = rows.map(row => {
+        const eafId = idMap.eafId(row.mumoId)
+        const refAnn: Record<string, unknown> = {
+          '@_ANNOTATION_ID':  eafId,
+          '@_ANNOTATION_REF': idMap.eafId(row.parentMumoId!),
+          ANNOTATION_VALUE:   row.value,
+        }
+        const prev = prevByParent.get(row.parentMumoId!)
+        if (prev) refAnn['@_PREVIOUS_ANNOTATION'] = prev
+        prevByParent.set(row.parentMumoId!, eafId)
+        return { REF_ANNOTATION: refAnn }
+      })
+    } else if (constraint === 'included_in') {
+      // Included_In allows gaps: emit only tokens with a full stored span
+      annElems = rows
+        .filter(r => r.tStart != null && r.tEnd != null && r.tEnd > r.tStart)
+        .map(row => ({
           ALIGNABLE_ANNOTATION: {
             '@_ANNOTATION_ID':  idMap.eafId(row.mumoId),
-            '@_TIME_SLOT_REF1': row.ts1!,
-            '@_TIME_SLOT_REF2': row.ts2!,
+            '@_TIME_SLOT_REF1': pool.id(row.tStart!),
+            '@_TIME_SLOT_REF2': pool.id(row.tEnd!),
             ANNOTATION_VALUE:   row.value,
           },
-        })),
-      })
-    }
-  }
-
-  // Lt-word (token) tiers from EAF import — emit as REF_ANNOTATIONs
-  if (hasLtWordTier) {
-    for (const tier of ltWordTiers) {
-      const participant = tier.participant ?? ''
-      const eafTierId   = tier.name || tier.id
-      const tierObj: Record<string, unknown> = {
-        '@_LINGUISTIC_TYPE_REF': transcriptWordLtId,
-        '@_TIER_ID':             eafTierId,
-        '@_PARENT_REF':          `participant:${participant}`,
+        }))
+    } else {
+      // Time_Subdivision: resolve the boundary chain per utterance the way the timeline
+      // displays it — utterance edges fixed, stored boundaries honored, unstored ones
+      // interpolated evenly between the nearest known neighbors.
+      annElems = []
+      const byParent = new Map<string, AnnRow[]>()
+      for (const row of rows) {
+        const list = byParent.get(row.parentMumoId!) ?? []
+        list.push(row)
+        byParent.set(row.parentMumoId!, list)
       }
-      if (tier.participant)    tierObj['@_PARTICIPANT']    = tier.participant
-      if (tier.annotator)      tierObj['@_ANNOTATOR']      = tier.annotator
-      if (tier.defaultLocale)  tierObj['@_DEFAULT_LOCALE'] = tier.defaultLocale
-
-      const annElems: Record<string, unknown>[] = []
-      for (const block of doc.content ?? []) {
-        if (block.type !== 'utterance') continue
-        const blockParticipant = (block.attrs?.['participant'] as string | undefined) ?? 'unknown'
-        if (blockParticipant !== participant) continue
-        const s = block.attrs?.['startTimeSeconds'] as number | null | undefined
-        if (s == null) continue
-        const uttPmId  = (block.attrs?.['id'] as string | undefined) ?? ''
-        const uttEafId = idMap.eafId(uttPmId)
-
-        let prevTokEafId: string | undefined
-        for (const tok of tokenStore.getUttTokens(uttPmId)) {
-          const tokEafId = idMap.eafId(tok.id)
-          const refAnn: Record<string, unknown> = {
-            '@_ANNOTATION_ID':  tokEafId,
-            '@_ANNOTATION_REF': uttEafId,
-            ANNOTATION_VALUE:   tok.text,
-          }
-          if (prevTokEafId) refAnn['@_PREVIOUS_ANNOTATION'] = prevTokEafId
-          annElems.push({ REF_ANNOTATION: refAnn })
-          prevTokEafId = tokEafId
+      for (const [blockId, group] of byParent) {
+        const span = uttSpanByBlock.get(blockId)
+        if (!span) continue
+        const n = group.length
+        // boundaries[0..n]: outer two are the utterance edges
+        const boundaries: Array<number | null> = [span.start]
+        for (let i = 1; i < n; i++) {
+          boundaries.push(group[i - 1]!.tEnd ?? group[i]!.tStart ?? null)
         }
+        boundaries.push(span.end)
+        // interpolate null runs between known neighbors
+        for (let i = 1; i < n; i++) {
+          if (boundaries[i] !== null) continue
+          let k = i + 1
+          while (boundaries[k] === null) k++
+          const lo = boundaries[i - 1]!, hi = boundaries[k]!
+          for (let m = i; m < k; m++) boundaries[m] = lo + ((hi - lo) * (m - i + 1)) / (k - i + 1)
+        }
+        // enforce monotonicity against inconsistent stored values
+        for (let i = 1; i <= n; i++) {
+          if ((boundaries[i] as number) < (boundaries[i - 1] as number)) boundaries[i] = boundaries[i - 1]!
+        }
+        group.forEach((row, i) => {
+          annElems.push({
+            ALIGNABLE_ANNOTATION: {
+              '@_ANNOTATION_ID':  idMap.eafId(row.mumoId),
+              '@_TIME_SLOT_REF1': pool.id(boundaries[i] as number),
+              '@_TIME_SLOT_REF2': pool.id(boundaries[i + 1] as number),
+              ANNOTATION_VALUE:   row.value,
+            },
+          })
+        })
       }
-      tierObj['ANNOTATION'] = annElems
-      tierElems.push(tierObj)
     }
+
+    tierElems.push({
+      '@_LINGUISTIC_TYPE_REF': ltRef,
+      '@_TIER_ID':             wordTierId,
+      '@_PARENT_REF':          parentId,
+      ...(tp ? { '@_PARTICIPANT': tp } : {}),
+      ...(tierDef?.annotator     ? { '@_ANNOTATOR':      tierDef.annotator }     : {}),
+      ...(tierDef?.defaultLocale ? { '@_DEFAULT_LOCALE': tierDef.defaultLocale } : {}),
+      ANNOTATION: annElems,
+    })
   }
 
   // Participant labels derived from transcript tier IDs (used to suppress ghost tiers below)
   const participantLabels = new Set<string>()
   for (const tierId of tierKind.keys()) {
-    if (tierId.startsWith('participant:')) participantLabels.add(tierId.slice('participant:'.length))
-    else if (tierId.startsWith('utt:'))    participantLabels.add(tierId.slice('utt:'.length))
+    if (tierId.startsWith('utterance:')) participantLabels.add(tierId.slice('utterance:'.length))
   }
 
   // Store annotation tiers
@@ -334,6 +388,12 @@ export function buildEAFDocumentObject(
     if (tier.parentTierId) {
       const parentTier = allTiers.find(t => t.id === tier.parentTierId)
       tierObj['@_PARENT_REF'] = parentTier?.name || tier.parentTierId
+    } else if (isRef && tier.participant) {
+      // Symbolic tiers require a parent in EAF. Participant-scoped tiers without an
+      // explicit parent are implicitly parented to the participant's utterance tier
+      // (their annotations reference utterances via blockNodeId/utteranceId).
+      const uttTierId = [...tierParticipant.entries()].find(([, p]) => p === tier.participant)?.[0]
+      if (uttTierId) tierObj['@_PARENT_REF'] = uttTierId
     }
     if (tier.participant)    tierObj['@_PARTICIPANT']    = tier.participant
     if (tier.annotator)      tierObj['@_ANNOTATOR']      = tier.annotator
@@ -351,8 +411,12 @@ export function buildEAFDocumentObject(
         if (isRef) {
           const parentId    = ann.features['parentAnnId']
           const tokenNodeId  = ann.features['tokenNodeId']
-          const parentEafId = parentId   ? idMap.eafId(parentId)
+          // Utterance-parented annotations (gloss/SA tiers) reference the utterance's
+          // annotation — same EAF id as the PM block, so idMap resolves it directly.
+          const blockNodeId  = ann.features['blockNodeId'] ?? ann.features['utteranceId']
+          const parentEafId = parentId    ? idMap.eafId(parentId)
                             : tokenNodeId ? idMap.eafId(tokenNodeId)
+                            : blockNodeId ? idMap.eafId(blockNodeId)
                             : ''
           // Skip ref annotations with no resolvable parent — they'd emit ANNOTATION_REF=""
           // which is invalid (xs:IDREF must be non-empty and reference an existing ID).
@@ -389,19 +453,36 @@ export function buildEAFDocumentObject(
     tierElems.push(tierObj)
   }
 
+  // TIME_ORDER (after tier emission so all slots are registered in the pool)
+
+  const timeOrderObj = !isTemplate
+    ? {
+        TIME_SLOT: pool.sorted().map(s => ({
+          '@_TIME_SLOT_ID': s.id,
+          ...(s.ms !== null ? { '@_TIME_VALUE': String(s.ms) } : {}),
+        })),
+      }
+    : undefined
+
   // LINGUISTIC_TYPE elements
 
   const ltElems: Record<string, unknown>[] = []
 
   ltElems.push({ '@_LINGUISTIC_TYPE_ID': transcriptLtId, '@_TIME_ALIGNABLE': 'true', '@_GRAPHIC_REFERENCES': 'false' })
-  if (includeWords) {
-    ltElems.push({ '@_LINGUISTIC_TYPE_ID': transcriptWordLtId, '@_TIME_ALIGNABLE': 'true',  '@_CONSTRAINTS': 'Time_Subdivision',     '@_GRAPHIC_REFERENCES': 'false' })
-  } else if (hasLtWordTier) {
-    ltElems.push({ '@_LINGUISTIC_TYPE_ID': transcriptWordLtId, '@_TIME_ALIGNABLE': 'false', '@_CONSTRAINTS': 'Symbolic_Subdivision', '@_GRAPHIC_REFERENCES': 'false' })
+  // Token LT variants, one per constraint actually used by an emitted token tier
+  if (usedTokenLts.has('lt-token')) {
+    ltElems.push({ '@_LINGUISTIC_TYPE_ID': 'lt-token',    '@_TIME_ALIGNABLE': 'false', '@_CONSTRAINTS': 'Symbolic_Subdivision', '@_GRAPHIC_REFERENCES': 'false' })
+  }
+  if (usedTokenLts.has('lt-token-ts')) {
+    ltElems.push({ '@_LINGUISTIC_TYPE_ID': 'lt-token-ts', '@_TIME_ALIGNABLE': 'true',  '@_CONSTRAINTS': 'Time_Subdivision',     '@_GRAPHIC_REFERENCES': 'false' })
+  }
+  if (usedTokenLts.has('lt-token-ii')) {
+    ltElems.push({ '@_LINGUISTIC_TYPE_ID': 'lt-token-ii', '@_TIME_ALIGNABLE': 'true',  '@_CONSTRAINTS': 'Included_In',          '@_GRAPHIC_REFERENCES': 'false' })
   }
   for (const lt of linguisticTypes) {
     const ltEafId      = lt.name || lt.id
-    const timeAlignable = (lt.constraint === 'time_subdivision' || lt.constraint === 'included_in') ? 'true' : 'false'
+    // Unconstrained LTs type top-level tiers, which must be time-alignable in ELAN.
+    const timeAlignable = (!lt.constraint || lt.constraint === 'time_subdivision' || lt.constraint === 'included_in') ? 'true' : 'false'
     const ltObj: Record<string, unknown> = {
       '@_LINGUISTIC_TYPE_ID':  ltEafId,
       '@_TIME_ALIGNABLE':      timeAlignable,
@@ -461,7 +542,8 @@ export function buildEAFDocumentObject(
 
   // Assemble document object (EAF element order must be preserved)
   // EAF 3.0 schema sequence: HEADER, TIME_ORDER, TIER, LINGUISTIC_TYPE,
-  // CONSTRAINT, LANGUAGE, CONTROLLED_VOCABULARY, EXTERNAL_REF
+  // LOCALE, LANGUAGE, CONSTRAINT, CONTROLLED_VOCABULARY, LEXICON_REF,
+  // REF_LINK_SET, EXTERNAL_REF
 
   const annotationDoc = {
     '@_AUTHOR':                        author,
@@ -474,8 +556,8 @@ export function buildEAFDocumentObject(
     ...(timeOrderObj            ? { TIME_ORDER:            timeOrderObj }                    : {}),
     ...(tierElems.length > 0    ? { TIER:                  tierElems }                       : {}),
     LINGUISTIC_TYPE:                   ltElems,
-    CONSTRAINT:                        constraintElems,
     ...(language                ? { LANGUAGE:              { '@_LANG_ID': language } }       : {}),
+    CONSTRAINT:                        constraintElems,
     ...(cvElems.length > 0      ? { CONTROLLED_VOCABULARY: cvElems }                         : {}),
     ...(extRefElems.length > 0  ? { EXTERNAL_REF:          extRefElems }                     : {}),
   }

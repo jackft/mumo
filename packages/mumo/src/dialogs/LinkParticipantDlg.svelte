@@ -1,14 +1,14 @@
 <script lang="ts">
   import { untrack } from 'svelte'
 
-  const { tierName, speakers, onconfirm, onclose }: {
+  const { tierName, participants, onconfirm, onclose }: {
     tierName: string
-    speakers: string[]
+    participants: string[]
     onconfirm: (participant: string) => void
     onclose: () => void
   } = $props()
 
-  let selected = $state(untrack(() => speakers[0] ?? ''))
+  let selected = $state(untrack(() => participants[0] ?? ''))
 </script>
 
 <button class="dlg-backdrop" onclick={onclose} aria-label="Close dialog"></button>
@@ -24,7 +24,7 @@
   <label>
     Participant
     <select bind:value={selected}>
-      {#each speakers as sp (sp)}
+      {#each participants as sp (sp)}
         <option value={sp}>{sp}</option>
       {/each}
     </select>

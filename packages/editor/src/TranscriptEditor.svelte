@@ -320,10 +320,10 @@
     const timePx = _measureW(timeSample, 'font-size:0.72em;font-variant-numeric:tabular-nums', el)
     el.style.setProperty('--time-w', ((timePx / rem) + 0.6).toFixed(2) + 'rem')
 
-    // Speaker width — measure the longest participant name at the element's actual font
-    const speakerPx = _measureW(longestParticipant + ':', 'font-size:0.85em;font-weight:600', el)
-    const speakerRem = Math.min(Math.max(speakerPx / rem + 0.6, 2), 12)
-    el.style.setProperty('--speaker-w', speakerRem.toFixed(2) + 'rem')
+    // Participant width — measure the longest participant name at the element's actual font
+    const participantPx = _measureW(longestParticipant + ':', 'font-size:0.85em;font-weight:600', el)
+    const participantRem = Math.min(Math.max(participantPx / rem + 0.6, 2), 12)
+    el.style.setProperty('--participant-w', participantRem.toFixed(2) + 'rem')
   }
 
   function _activeUtteranceId(sel: Selection): string | null {
@@ -709,28 +709,26 @@
   }
 
 
-  export function updateUttTier(oldTierName: string, newTierName: string, newParticipant?: string): void {
+  /** Re-tier the utterances of one lane, matched by (participant, base tier attr).
+   *  Bases are the bare tier attr with '' meaning the default utterance:<participant> lane
+   *  (the reserved 'utterance' attr set on new utterances is normalized to '').
+   *  Optionally moves the matched utterances to a new participant. */
+  export function updateUttTier(oldParticipant: string, oldBase: string, newBase: string, newParticipant?: string): void {
     if (!view) return
-    const resolvedParticipant = newParticipant ?? tierNameToParticipant(newTierName)
     const tr = view.state.tr
-    // Legacy utterances have tier='' and are exported as participant:<label>.
-    // When oldTierName starts with 'participant:', also match tier='' nodes for that participant.
-    const legacyParticipant = oldTierName.startsWith('participant:') ? oldTierName.slice('participant:'.length) : null
     view.state.doc.forEach((node, offset) => {
       if (node.type.name !== 'utterance') return
+      if (((node.attrs.participant as string | undefined) ?? '') !== oldParticipant) return
       const nodeTier = (node.attrs.tier as string | undefined) ?? ''
-      const nodeParticipant = (node.attrs.participant as string | undefined) ?? ''
-      const matches = nodeTier === oldTierName
-        || (legacyParticipant !== null && nodeTier === '' && nodeParticipant === legacyParticipant)
-      if (matches)
-        tr.setNodeMarkup(offset, undefined, { ...node.attrs, tier: newTierName, participant: resolvedParticipant })
+      const base = nodeTier === 'utterance' ? '' : nodeTier
+      if (base !== oldBase) return
+      tr.setNodeMarkup(offset, undefined, {
+        ...node.attrs,
+        tier: newBase,
+        ...(newParticipant !== undefined ? { participant: newParticipant } : {}),
+      })
     })
-    view.dispatch(tr)
-  }
-
-  function tierNameToParticipant(tierName: string): string {
-    if (tierName.startsWith('participant:')) return tierName.slice('participant:'.length)
-    return tierName
+    if (tr.docChanged) view.dispatch(tr)
   }
 
   export function addAnnotationMarkForWordIds(fromWordId: string, toWordId: string): string | null {
@@ -1061,7 +1059,7 @@
     --ln-w: 2rem;
     --ln-margin: 0.25rem;
     --ln-gutter: calc(var(--ln-w) + var(--ln-margin) * 2);
-    --utt-meta-w: calc(var(--ln-w) + var(--time-w, 6.5rem) + var(--time-w, 6.5rem) + var(--speaker-w, 4rem) + 4 * 0.5rem);
+    --utt-meta-w: calc(var(--ln-w) + var(--time-w, 6.5rem) + var(--time-w, 6.5rem) + var(--participant-w, 4rem) + 4 * 0.5rem);
     /* Both times visible: gutter + gap + time + gap + time + half-gap */
     --sep-x: calc(var(--ln-gutter) + var(--time-w, 6.5rem) * 2 + 1.25rem);
     /* Per-guide positions — set to -1px to hide an individual line */
@@ -1113,9 +1111,9 @@
     counter-increment: utt-line;
     min-height: 1.5em;
   }
-  .hide-times :global(.comment-row) { padding-left: calc(var(--ln-w, 2rem) + var(--speaker-w, 4rem) + 2 * 0.5rem); }
-  .hide-start :global(.comment-row) { padding-left: calc(var(--ln-w, 2rem) + var(--time-w, 6.5rem) + var(--speaker-w, 4rem) + 3 * 0.5rem); }
-  .hide-end   :global(.comment-row) { padding-left: calc(var(--ln-w, 2rem) + var(--time-w, 6.5rem) + var(--speaker-w, 4rem) + 3 * 0.5rem); }
+  .hide-times :global(.comment-row) { padding-left: calc(var(--ln-w, 2rem) + var(--participant-w, 4rem) + 2 * 0.5rem); }
+  .hide-start :global(.comment-row) { padding-left: calc(var(--ln-w, 2rem) + var(--time-w, 6.5rem) + var(--participant-w, 4rem) + 3 * 0.5rem); }
+  .hide-end   :global(.comment-row) { padding-left: calc(var(--ln-w, 2rem) + var(--time-w, 6.5rem) + var(--participant-w, 4rem) + 3 * 0.5rem); }
 
   :global(.utt-row) {
     display: flex;
@@ -1187,9 +1185,9 @@
     color: var(--color-primary, #4a9eff);
   }
 
-  :global(.utt-speaker) {
+  :global(.utt-participant) {
     flex-shrink: 0;
-    width: var(--speaker-w, 4rem);
+    width: var(--participant-w, 4rem);
     font-weight: 400;
     color: var(--color-text-3, #555);
     cursor: text;
@@ -1198,13 +1196,13 @@
     font-size: 0.85em;
   }
 
-  :global(.utt-speaker::after) {
+  :global(.utt-participant::after) {
     content: ':';
     color: var(--color-text-light, #888);
     font-weight: 400;
   }
 
-  :global(.utt-speaker[contenteditable="true"]) {
+  :global(.utt-participant[contenteditable="true"]) {
     background: #fffbe6;
     outline: 1px solid #f0c040;
     border-radius: 2px;
@@ -1212,7 +1210,7 @@
     user-select: text;
   }
 
-  :global(.utt-speaker--conflict) {
+  :global(.utt-participant--conflict) {
     background: var(--color-danger-light, #fde8e8) !important;
     outline: 2px solid var(--color-danger, #e74c3c) !important;
     border-radius: 2px;
@@ -1350,9 +1348,9 @@
   }
 
   /* Adjust gloss indent when time columns are hidden */
-  .hide-times :global(.utt-gloss) { padding-left: calc(var(--ln-w, 2rem) + var(--speaker-w, 4rem) + 2 * 0.5rem); }
+  .hide-times :global(.utt-gloss) { padding-left: calc(var(--ln-w, 2rem) + var(--participant-w, 4rem) + 2 * 0.5rem); }
   .hide-start :global(.utt-gloss),
-  .hide-end   :global(.utt-gloss) { padding-left: calc(var(--ln-w, 2rem) + var(--time-w, 6.5rem) + var(--speaker-w, 4rem) + 3 * 0.5rem); }
+  .hide-end   :global(.utt-gloss) { padding-left: calc(var(--ln-w, 2rem) + var(--time-w, 6.5rem) + var(--participant-w, 4rem) + 3 * 0.5rem); }
 
   :global(.tok-ws) {
     white-space: pre-wrap;

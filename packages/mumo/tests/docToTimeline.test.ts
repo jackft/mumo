@@ -25,7 +25,7 @@ describe('utterance bars', () => {
     expect(b.start).toBe(1.0)
     expect(b.end).toBe(3.0)
     expect(b.placeholder).toBe(false)
-    expect(b.laneId).toBe('participant:A')
+    expect(b.laneId).toBe('utterance:A')
   })
 
   it('creates a placeholder bar for an untimed utterance starting at 0', () => {
@@ -48,19 +48,19 @@ describe('utterance bars', () => {
     expect(utts[1]!.start).toBe(1); expect(utts[1]!.end).toBe(2)
   })
 
-  it('creates both a speaker lane and a word lane', () => {
+  it('creates both a participant lane and a word lane', () => {
     const doc = docFromBlocks([{ type: 'utterance', participant: 'A', text: 'x', startTimeSeconds: 0, endTimeSeconds: 1 }])
     const { lanes } = docToTimeline(doc)
     const ids = lanes.map(l => l.id)
-    expect(ids).toContain('participant:A')
-    expect(ids).toContain('tokens:participant:A')
+    expect(ids).toContain('utterance:A')
+    expect(ids).toContain('tokens:A')
   })
 
-  it('word lane appears after speaker lane', () => {
+  it('word lane appears after participant lane', () => {
     const doc = docFromBlocks([{ type: 'utterance', participant: 'A', text: 'x', startTimeSeconds: 0, endTimeSeconds: 1 }])
     const { lanes } = docToTimeline(doc)
     const ids = lanes.map(l => l.id)
-    expect(ids.indexOf('tokens:participant:A')).toBeGreaterThan(ids.indexOf('participant:A'))
+    expect(ids.indexOf('tokens:A')).toBeGreaterThan(ids.indexOf('utterance:A'))
   })
 })
 
@@ -75,7 +75,7 @@ describe('word/token bars', () => {
   it('distributes symbolic (null-time) tokens evenly across the parent span', () => {
     const doc = docFromBlocks([{ type: 'utterance', participant: 'A', text: 'foo bar', startTimeSeconds: 0, endTimeSeconds: 2 }])
     const ts = makeTokenStore(doc)
-    const wBars = barsIn(docToTimeline(doc, [], [], ts).bars, 'tokens:participant:A')
+    const wBars = barsIn(docToTimeline(doc, [], [], ts).bars, 'tokens:A')
     expect(wBars).toHaveLength(2) // ws excluded
     expect(wBars[0]!.start).toBeCloseTo(0);  expect(wBars[0]!.end).toBeCloseTo(1)
     expect(wBars[1]!.start).toBeCloseTo(1);  expect(wBars[1]!.end).toBeCloseTo(2)
@@ -117,7 +117,7 @@ describe('word/token bars', () => {
   it('whitespace tokens are excluded from word bars', () => {
     const doc = docFromBlocks([{ type: 'utterance', participant: 'A', text: 'a b c', startTimeSeconds: 0, endTimeSeconds: 3 }])
     const ts = makeTokenStore(doc)
-    const wBars = barsIn(docToTimeline(doc, [], [], ts).bars, 'tokens:participant:A')
+    const wBars = barsIn(docToTimeline(doc, [], [], ts).bars, 'tokens:A')
     expect(wBars).toHaveLength(3) // a, b, c — no ws bars
     for (const b of wBars) expect(b.label.trim()).not.toBe('')
   })

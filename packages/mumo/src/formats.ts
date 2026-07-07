@@ -28,6 +28,8 @@ export type ExportOpts = {
   language?: string
   mediaUrl?: string
   timeOriginMs?: number
+  /** Emit word-level token tiers (tokens:<participant>) in EAF export. */
+  includeTokenTiers?: boolean
 }
 
 export type ExportContext = {

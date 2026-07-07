@@ -631,8 +631,8 @@
       saColumns = info.allSaTierIds.map(makeSaCol)
     }
 
-    const speakerCol: ColumnDefinition = {
-      title: 'Speaker', field: '_participant', width: 70, headerSort: false,
+    const participantCol: ColumnDefinition = {
+      title: 'Participant', field: '_participant', width: 70, headerSort: false,
       editable: false,
       cssClass: 'cell-readonly',
     }
@@ -667,7 +667,7 @@
             return store.getTier(id)?.name ?? id
           },
         },
-        ...(hasUtt || hasTok ? [speakerCol] : []),
+        ...(hasUtt || hasTok ? [participantCol] : []),
         {
           title: 'Annotation', field: 'annotation', widthGrow: 3, headerSort: false,
           editable: (cell: CellComponent) => {
@@ -1015,7 +1015,7 @@
       {#if _showDropdown}
         <div class="tier-dd-menu" role="listbox" aria-label="Select columns">
           {#each _mixedGroups() as group (group.label)}
-            <div class="tier-dd-lineage-label">{group.label || '(no speaker)'}</div>
+            <div class="tier-dd-lineage-label">{group.label || '(no participant)'}</div>
             {#each group.members as member (member.kind === 'tier' ? member.tier.id : member.kind + ':' + member.participant)}
               {#if member.kind === 'pseudo-utt'}
                 <label class="tier-dd-item" style="padding-left: {10 + member.depth * 14}px">

@@ -40,14 +40,14 @@ describe('parseXML', () => {
     const { xml } = buildTwoSpeakers()
     const eaf = parseXML(xml)
     const tierIds = eaf.tiers.map(t => t.id)
-    expect(tierIds).toContain('participant:A')
-    expect(tierIds).toContain('participant:B')
+    expect(tierIds).toContain('utterance:A')
+    expect(tierIds).toContain('utterance:B')
   })
 
   it('parses alignable annotations with time refs', () => {
     const { xml } = buildSingleSpeaker()
     const eaf = parseXML(xml)
-    const tier = eaf.tiers.find(t => t.id === 'participant:A')!
+    const tier = eaf.tiers.find(t => t.id === 'utterance:A')!
     expect(tier).toBeDefined()
     expect(tier.annotations).toHaveLength(2)
     for (const ann of tier.annotations) {
@@ -69,7 +69,7 @@ describe('parseXML', () => {
 // eafTomumo
 
 describe('eafTomumo', () => {
-  it('produces utterance blocks for speaker: tiers', () => {
+  it('produces utterance blocks for utterance: tiers', () => {
     const { xml } = buildSingleSpeaker()
     const result = eafTomumo(parseXML(xml))
     const doc = result.doc as { content: Array<{ type: string; attrs: Record<string, unknown> }> }
@@ -77,13 +77,31 @@ describe('eafTomumo', () => {
     expect(utterances).toHaveLength(2)
   })
 
-  it('preserves speaker participant', () => {
+  it('preserves participant', () => {
     const { xml } = buildTwoSpeakers()
     const result = eafTomumo(parseXML(xml))
     const doc = result.doc as { content: Array<{ type: string; attrs: Record<string, unknown> }> }
     const participants = doc.content.map(n => n.attrs['participant'])
     expect(participants).toContain('A')
     expect(participants).toContain('B')
+  })
+
+  it('default utterance:<p> tiers import with an empty tier attr (no lane-ID doubling)', () => {
+    const { xml } = buildTwoSpeakers()
+    const result = eafTomumo(parseXML(xml))
+    const doc = result.doc as { content: Array<{ type: string; attrs: Record<string, unknown> }> }
+    for (const n of doc.content.filter(n => n.type === 'utterance')) {
+      expect(n.attrs['tier']).toBe('')
+    }
+  })
+
+  it('custom base:participant tiers import with the suffix stripped from the tier attr', () => {
+    const { xml } = buildArbitraryTiers()
+    const result = eafTomumo(parseXML(xml), { transcriptTierIds: ['CHI:Child', 'MOT:Mother'] })
+    const doc = result.doc as { content: Array<{ type: string; attrs: Record<string, unknown> }> }
+    const tiers = doc.content.filter(n => n.type === 'utterance').map(n => n.attrs['tier'])
+    expect(tiers).toContain('CHI')
+    expect(tiers).toContain('MOT')
   })
 
   it('preserves start/end time to millisecond precision', () => {
@@ -128,7 +146,7 @@ describe('eafTomumo', () => {
 // emitEAF → parseEAF round-trip
 
 describe('EAF round-trip: emit → parse', () => {
-  it('single speaker: same number of utterances', () => {
+  it('single participant: same number of utterances', () => {
     const { doc, store } = buildSingleSpeaker()
     const xml = emitEAF(doc, store)
     const result = parseEAF(xml)
@@ -234,8 +252,8 @@ describe('emitEAF output', () => {
   it('contains TIER elements', () => {
     const { doc, store } = buildTwoSpeakers()
     const xml = emitEAF(doc, store)
-    expect(xml).toContain('TIER_ID="participant:A"')
-    expect(xml).toContain('TIER_ID="participant:B"')
+    expect(xml).toContain('TIER_ID="utterance:A"')
+    expect(xml).toContain('TIER_ID="utterance:B"')
   })
 
   it('contains CONSTRAINT declarations', () => {
@@ -252,12 +270,51 @@ describe('emitEAF output', () => {
     expect(xml).not.toContain('<ANNOTATION>')
   })
 
-  it('arbitrary tier names use TIER_ID verbatim', () => {
+  it('custom tier names compose TIER_ID as base:participant', () => {
     const { xml } = buildArbitraryTiers()
-    expect(xml).toContain('TIER_ID="CHI"')
-    expect(xml).toContain('TIER_ID="MOT"')
-    expect(xml).not.toContain('TIER_ID="participant:CHI"')
-    expect(xml).not.toContain('TIER_ID="participant:MOT"')
+    expect(xml).toContain('TIER_ID="CHI:Child"')
+    expect(xml).toContain('TIER_ID="MOT:Mother"')
+    expect(xml).not.toContain('TIER_ID="utterance:CHI"')
+    expect(xml).not.toContain('TIER_ID="utterance:MOT"')
+  })
+
+  it('emits ELAN-loadable EAF: MIME_TYPE, LANGUAGE order, top-level LT alignable, parented SA tiers', () => {
+    const store = new AnnotationStore()
+    const metaLt   = store.addLinguisticType('transcription', {})
+    const metaTier = store.addTier('@Comment', { linguisticTypeId: metaLt.id })
+    store.addAnnotation('a note', [{ type: 'time', start: 0, end: 1 }], { tierId: metaTier.id })
+    const saLt   = store.addLinguisticType('MWU', { constraint: 'symbolic_association' })
+    const saTier = store.addTier('mwu:A', { linguisticTypeId: saLt.id, participant: 'A' })
+    store.addAnnotation('multi', [], { tierId: saTier.id, blockNodeId: 'u1' })
+    const doc = { type: 'doc', content: [{
+      type: 'utterance',
+      attrs: { id: 'u1', participant: 'A', startTimeSeconds: 0, endTimeSeconds: 1 },
+      content: [{ type: 'text', text: 'hi' }],
+    }] }
+    const xml = emitEAF(doc as never, store, { language: 'und', mediaUrl: 'file:///x.wav' })
+    // MEDIA_DESCRIPTOR always carries the required MIME_TYPE
+    expect(xml).toContain('MIME_TYPE="unknown"')
+    // LANGUAGE must precede CONSTRAINT in the document sequence
+    expect(xml.indexOf('<LANGUAGE')).toBeGreaterThan(0)
+    expect(xml.indexOf('<LANGUAGE')).toBeLessThan(xml.indexOf('<CONSTRAINT'))
+    // Unconstrained LTs type top-level tiers → must be TIME_ALIGNABLE
+    expect(xml).toMatch(/LINGUISTIC_TYPE_ID="transcription" TIME_ALIGNABLE="true"/)
+    // Parentless SA tier with a participant gets PARENT_REF to the utterance tier,
+    // and its blockNodeId annotation is emitted as a REF to the utterance annotation
+    expect(xml).toMatch(/TIER_ID="mwu:A" PARENT_REF="utterance:A"/)
+    expect(xml).toContain('>multi<')
+    validateEAF(xml)
+  })
+
+  it('skips the participant suffix when it equals the tier base (FA1, not FA1:FA1)', () => {
+    const doc = { type: 'doc', content: [{
+      type: 'utterance',
+      attrs: { id: 'u1', tier: 'FA1', participant: 'FA1', startTimeSeconds: 0, endTimeSeconds: 1 },
+      content: [{ type: 'text', text: 'hi' }],
+    }] }
+    const xml = emitEAF(doc as never, new AnnotationStore())
+    expect(xml).toContain('TIER_ID="FA1"')
+    expect(xml).not.toContain('FA1:FA1')
   })
 
   it('arbitrary tier names export PARTICIPANT attribute', () => {
@@ -270,7 +327,7 @@ describe('emitEAF output', () => {
 // XSD validation
 
 describe('XSD validation (EAF 3.0)', () => {
-  it('single speaker output is valid', () => {
+  it('single participant output is valid', () => {
     const { doc, store } = buildSingleSpeaker()
     validateEAF(emitEAF(doc, store))
   })

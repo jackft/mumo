@@ -57,7 +57,9 @@ export class MediaResolver {
     }
 
     // All automatic paths failed — prompt the user to locate the file.
-    const result = await platform.openBinaryFile(MEDIA_EXTENSIONS, 'Locate media file')
+    const expectedName = descriptor.mediaUrl.replace(/\\/g, '/').split('/').pop() ?? ''
+    const description = expectedName ? `Locate media file: ${expectedName}` : 'Locate media file'
+    const result = await platform.openBinaryFile(MEDIA_EXTENSIONS, description)
     if (!result) return null
 
     // Remember the directory for the next resolve call.

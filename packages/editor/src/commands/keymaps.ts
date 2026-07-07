@@ -7,8 +7,8 @@ import type { TokenStore } from '@mumo/core'
 import { TextSelection } from 'prosemirror-state'
 import type { Command } from 'prosemirror-state'
 
-/** Focus the speaker label of the utterance containing the cursor. */
-const focusSpeaker: Command = (state, _dispatch, view) => {
+/** Focus the participant label of the utterance containing the cursor. */
+const focusParticipant: Command = (state, _dispatch, view) => {
   if (!view) return false
   const { $head } = state.selection
   let uttPos: number | null = null
@@ -31,7 +31,7 @@ const focusSpeaker: Command = (state, _dispatch, view) => {
 function splitBlock(
   state: Parameters<Command>[0],
   dispatch: Parameters<Command>[1],
-  keepSpeaker: boolean,
+  keepParticipant: boolean,
   tokenStore: TokenStore,
   getTokenTime?: (id: string) => { start: number; end: number } | undefined,
 ): boolean {
@@ -61,19 +61,19 @@ function splitBlock(
     if (atStartOfUtt) {
       if (parentNode.content.size === 0) {
         const insertAt = uttPos + parentNode.nodeSize
-        const p = keepSpeaker ? ((parentNode.attrs.participant as string | null) ?? '') : ''
-        const newAttrs = { id: newId(), participant: p || null, tier: keepSpeaker ? (parentNode.attrs.tier ?? '') : 'utterance', startTimeSeconds: null, endTimeSeconds: null }
+        const p = keepParticipant ? ((parentNode.attrs.participant as string | null) ?? '') : ''
+        const newAttrs = { id: newId(), participant: p || null, tier: keepParticipant ? (parentNode.attrs.tier ?? '') : 'utterance', startTimeSeconds: null, endTimeSeconds: null }
         let tr = state.tr.insert(insertAt, parentType.create(newAttrs))
         tr = tr.setSelection(TextSelection.create(tr.doc, insertAt + 1))
         dispatch(tr.scrollIntoView())
         return true
       }
 
-      const newUttParticipant = keepSpeaker ? ((parentNode.attrs.participant as string | null) ?? '') : ''
+      const newUttParticipant = keepParticipant ? ((parentNode.attrs.participant as string | null) ?? '') : ''
       const newNode = schema.nodes['utterance'].create({
         id:               newId(),
         participant:      newUttParticipant || null,
-        tier:             keepSpeaker ? (parentNode.attrs.tier ?? '') : 'utterance',
+        tier:             keepParticipant ? (parentNode.attrs.tier ?? '') : 'utterance',
         startTimeSeconds: null,
         endTimeSeconds:   null,
       })
@@ -109,11 +109,11 @@ function splitBlock(
         : null
 
       const newUttId = newId()
-      const endUttParticipant = keepSpeaker ? ((parentNode.attrs.participant as string | null) ?? '') : ''
+      const endUttParticipant = keepParticipant ? ((parentNode.attrs.participant as string | null) ?? '') : ''
       const newNode  = schema.nodes['utterance'].create({
         id: newUttId,
         participant: endUttParticipant || null,
-        tier: keepSpeaker ? (parentNode.attrs.tier ?? '') : 'utterance',
+        tier: keepParticipant ? (parentNode.attrs.tier ?? '') : 'utterance',
         startTimeSeconds: newStart,
         endTimeSeconds:   newEnd,
       })
@@ -289,7 +289,7 @@ const insertVisualization: Command = (state, dispatch) => {
 /**
  * Backspace at the very start of an utterance:
  * - If the previous sibling is empty, delete it (keeps the current utterance intact).
- * - If the previous sibling has the same speaker, join and merge time attrs
+ * - If the previous sibling has the same participant, join and merge time attrs
  *   (start time from prev, end time from current).
  * - Otherwise fall through to baseKeymap's joinBackward.
  */
@@ -319,7 +319,7 @@ const backspaceBlockStart: Command = (state, dispatch) => {
     return true
   }
 
-  // Same-speaker join: merge and pick start time from prev, end time from current.
+  // Same-participant join: merge and pick start time from prev, end time from current.
   const prevParticipant = (prevSibling.attrs.participant as string) || ''
   const currParticipant = (currUtt.attrs.participant as string) || ''
   if (prevParticipant !== currParticipant) return false
@@ -419,7 +419,7 @@ export function buildKeymapPlugin(
   onEscapeKey?: () => void,
 ) {
   const splitUtterance:            Command = (state, dispatch) => splitBlock(state, dispatch, false, tokenStore, getTokenTime)
-  const splitUtteranceSameSpeaker: Command = (state, dispatch) => splitBlock(state, dispatch, true,  tokenStore, getTokenTime)
+  const splitUtteranceSameParticipant: Command = (state, dispatch) => splitBlock(state, dispatch, true,  tokenStore, getTokenTime)
 
   return [
     keymap({
@@ -431,10 +431,10 @@ export function buildKeymapPlugin(
       'Mod-Shift-s': toggleMark(schema.marks['strike']),
       'Mod-u': toggleMark(schema.marks['underline']),
       'Enter': chainCommands(exitComment, splitUtterance),
-      'Shift-Enter': chainCommands(splitComment, splitUtteranceSameSpeaker),
+      'Shift-Enter': chainCommands(splitComment, splitUtteranceSameParticipant),
       'Alt-/': insertCommentBlock,
       'Alt-Shift-Enter': insertVisualization,
-      'Shift-Tab': focusSpeaker,
+      'Shift-Tab': focusParticipant,
       'Backspace':  backspaceBlockStart,
       'Delete':     clearBlock,
       'ArrowLeft':  arrowLeftBlock,
