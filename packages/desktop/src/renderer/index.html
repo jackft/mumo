@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- No remote/inline script may run. wasm-unsafe-eval: spectrogram WASM;
+         blob:/file: media + blob: workers: media player; ws:/wss:/http(s):
+         user-configured collab servers; unsafe-inline styles: Svelte style attrs -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob: file:; font-src 'self' data:; connect-src 'self' ws: wss: http: https:; worker-src 'self' blob:"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mumo</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "@mumo/media-player",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@mumo/core": "workspace:*",
+    "@mumo/timeline": "workspace:*",
+    "@ricky0123/vad-web": "^0.0.30",
+    "mediabunny": "^1.50.3",
+    "pixi.js": "^8.19.0",
+    "audio-analysis-wasm": "workspace:*"
+  },
+  "devDependencies": {
+    "svelte": "^5.56.4",
+    "svelte-check": "^4.7.1",
+    "typescript": "^6.0.3"
+  }
+}

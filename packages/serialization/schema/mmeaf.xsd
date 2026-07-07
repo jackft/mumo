@@ -1,0 +1,468 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  MMEAF — MuMo Multimodal ELAN Annotation Format
+  Document schema  (no namespace — EAF-compatible root)
+
+  MMEAF is a strict superset of ELAN Annotation Format (EAF) 3.0.
+  The base document structure is identical to EAF 3.0 (MPI, December 2016).
+  One additional optional child is permitted on ANNOTATION_DOCUMENT:
+    <mm:mumo_data> — all MuMo extensions, defined in mmeaf-mm.xsd.
+
+  Files that omit mm:mumo_data are plain EAF 3.0 and validate against
+  the official EAFv3.0.xsd without modification.
+
+  Companion namespace schema: mmeaf-mm.xsd
+  mm: namespace:              https://mumo.io/ns/mmeaf/1
+
+  Validate with xmllint (requires libxml2 with schema support):
+    xmllint  -nonet  -schema mmeaf.xsd  -noout  file.mmeaf
+-->
+<xs:schema
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns:mm="https://mumo.io/ns/mmeaf/1"
+  elementFormDefault="unqualified">
+
+  <xs:import namespace="https://mumo.io/ns/mmeaf/1" schemaLocation="mmeaf-mm.xsd"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       ANNOTATION_DOCUMENT — root element
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:element name="ANNOTATION_DOCUMENT">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="LICENSE"              type="licenseType"    minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="HEADER"               type="headType"/>
+        <xs:element name="TIME_ORDER"           type="timeType"/>
+        <xs:element name="TIER"                 type="tierType"       minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="LINGUISTIC_TYPE"      type="lingType"       minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="LOCALE"               type="localeType"     minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="LANGUAGE"             type="langType"       minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="CONSTRAINT"           type="constraintType" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="CONTROLLED_VOCABULARY" type="convocType"    minOccurs="0" maxOccurs="unbounded">
+          <xs:key name="cvEntryKey">
+            <xs:selector xpath="CV_ENTRY_ML"/>
+            <xs:field    xpath="@CVE_ID"/>
+          </xs:key>
+        </xs:element>
+        <xs:element name="LEXICON_REF"   type="lexRefType"   minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="REF_LINK_SET"  type="refLinksType" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="EXTERNAL_REF"  type="extRefType"   minOccurs="0" maxOccurs="unbounded"/>
+        <!-- MuMo extension — ignored by ELAN 6.x -->
+        <xs:element ref="mm:mumo_data" minOccurs="0"/>
+      </xs:sequence>
+      <xs:attribute name="DATE"    type="xs:dateTime" use="required"/>
+      <xs:attribute name="AUTHOR"  type="xs:string"   use="required"/>
+      <xs:attribute name="VERSION" type="xs:string"   use="required"/>
+      <xs:attribute name="FORMAT"  type="xs:string"   use="optional" default="3.0"/>
+      <!-- allow xmlns:mm and xsi:* without explicit declaration -->
+      <xs:anyAttribute namespace="##other" processContents="lax"/>
+    </xs:complexType>
+
+    <!-- ── Tier referential integrity ─────────────────────────────────────── -->
+    <xs:key name="tierNameKey">
+      <xs:selector xpath="TIER"/>
+      <xs:field    xpath="@TIER_ID"/>
+    </xs:key>
+    <xs:keyref name="tierNameRef" refer="tierNameKey">
+      <xs:selector xpath="TIER"/>
+      <xs:field    xpath="@PARENT_REF"/>
+    </xs:keyref>
+
+    <!-- ── Linguistic type referential integrity ───────────────────────────── -->
+    <xs:key name="linTypeNameKey">
+      <xs:selector xpath="LINGUISTIC_TYPE"/>
+      <xs:field    xpath="@LINGUISTIC_TYPE_ID"/>
+    </xs:key>
+    <xs:keyref name="linTypeNameRef" refer="linTypeNameKey">
+      <xs:selector xpath="TIER"/>
+      <xs:field    xpath="@LINGUISTIC_TYPE_REF"/>
+    </xs:keyref>
+
+    <!-- ── Controlled vocabulary referential integrity ────────────────────── -->
+    <xs:key name="cvNameKey">
+      <xs:selector xpath="CONTROLLED_VOCABULARY"/>
+      <xs:field    xpath="@CV_ID"/>
+    </xs:key>
+    <xs:keyref name="cvNameRef" refer="cvNameKey">
+      <xs:selector xpath="LINGUISTIC_TYPE"/>
+      <xs:field    xpath="@CONTROLLED_VOCABULARY_REF"/>
+    </xs:keyref>
+
+    <!-- ── Lexicon referential integrity ──────────────────────────────────── -->
+    <xs:key name="lexNameKey">
+      <xs:selector xpath="LEXICON_REF"/>
+      <xs:field    xpath="@LEX_REF_ID"/>
+    </xs:key>
+    <xs:keyref name="lexNameRef" refer="lexNameKey">
+      <xs:selector xpath="LINGUISTIC_TYPE"/>
+      <xs:field    xpath="@LEXICON_REF"/>
+    </xs:keyref>
+
+    <!-- ── Annotation referential integrity ───────────────────────────────── -->
+    <xs:key name="prevAnnoKey">
+      <xs:selector xpath="TIER/ANNOTATION/REF_ANNOTATION"/>
+      <xs:field    xpath="@ANNOTATION_ID"/>
+    </xs:key>
+    <xs:keyref name="prevAnnoRef" refer="prevAnnoKey">
+      <xs:selector xpath="TIER/ANNOTATION/REF_ANNOTATION"/>
+      <xs:field    xpath="@PREVIOUS_ANNOTATION"/>
+    </xs:keyref>
+
+    <!-- ── Time slot referential integrity ────────────────────────────────── -->
+    <xs:key name="timeSlotKey">
+      <xs:selector xpath="TIME_ORDER/TIME_SLOT"/>
+      <xs:field    xpath="@TIME_SLOT_ID"/>
+    </xs:key>
+    <xs:keyref name="timeSlotRef1" refer="timeSlotKey">
+      <xs:selector xpath="TIER/ANNOTATION/ALIGNABLE_ANNOTATION"/>
+      <xs:field    xpath="@TIME_SLOT_REF1"/>
+    </xs:keyref>
+    <xs:keyref name="timeSlotRef2" refer="timeSlotKey">
+      <xs:selector xpath="TIER/ANNOTATION/ALIGNABLE_ANNOTATION"/>
+      <xs:field    xpath="@TIME_SLOT_REF2"/>
+    </xs:keyref>
+
+    <!-- ── Language referential integrity (EAF 2.8+) ─────────────────────── -->
+    <xs:key name="langIdKey">
+      <xs:selector xpath="LANGUAGE"/>
+      <xs:field    xpath="@LANG_ID"/>
+    </xs:key>
+    <xs:keyref name="cvValueLangRef" refer="langIdKey">
+      <xs:selector xpath="CONTROLLED_VOCABULARY/CV_ENTRY_ML/CVE_VALUE"/>
+      <xs:field    xpath="@LANG_REF"/>
+    </xs:keyref>
+    <xs:keyref name="cvDescLangRef" refer="langIdKey">
+      <xs:selector xpath="CONTROLLED_VOCABULARY/DESCRIPTION"/>
+      <xs:field    xpath="@LANG_REF"/>
+    </xs:keyref>
+    <xs:keyref name="tierLangRef" refer="langIdKey">
+      <xs:selector xpath="TIER"/>
+      <xs:field    xpath="@LANG_REF"/>
+    </xs:keyref>
+    <xs:keyref name="annoAlignLangRef" refer="langIdKey">
+      <xs:selector xpath="TIER/ANNOTATION/ALIGNABLE_ANNOTATION"/>
+      <xs:field    xpath="@LANG_REF"/>
+    </xs:keyref>
+    <xs:keyref name="annoRefLangRef" refer="langIdKey">
+      <xs:selector xpath="TIER/ANNOTATION/REF_ANNOTATION"/>
+      <xs:field    xpath="@LANG_REF"/>
+    </xs:keyref>
+
+    <!-- ── Annotation ID uniqueness ───────────────────────────────────────── -->
+    <xs:key name="alignAnnotationIdKey">
+      <xs:selector xpath="TIER/ANNOTATION/ALIGNABLE_ANNOTATION"/>
+      <xs:field    xpath="@ANNOTATION_ID"/>
+    </xs:key>
+    <xs:key name="refAnnotationIdKey">
+      <xs:selector xpath="TIER/ANNOTATION/REF_ANNOTATION"/>
+      <xs:field    xpath="@ANNOTATION_ID"/>
+    </xs:key>
+
+    <!-- ── Referential link ID uniqueness (EAF 3.0) ───────────────────────── -->
+    <xs:key name="crossRefLinkIdKey">
+      <xs:selector xpath="REF_LINK_SET/CROSS_REF_LINK"/>
+      <xs:field    xpath="@REF_LINK_ID"/>
+    </xs:key>
+    <xs:key name="groupRefLinkIdKey">
+      <xs:selector xpath="REF_LINK_SET/GROUP_REF_LINK"/>
+      <xs:field    xpath="@REF_LINK_ID"/>
+    </xs:key>
+  </xs:element>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       EAF element types  (mirrored from EAFv3.0.xsd, MPI December 2016)
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- HEADER -->
+  <xs:complexType name="headType">
+    <xs:sequence>
+      <xs:element name="MEDIA_DESCRIPTOR" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:attribute name="MEDIA_URL"          type="xs:anyURI" use="required"/>
+          <xs:attribute name="RELATIVE_MEDIA_URL" type="xs:anyURI" use="optional"/>
+          <xs:attribute name="MIME_TYPE"          type="xs:string" use="required"/>
+          <xs:attribute name="TIME_ORIGIN"        type="xs:long"   use="optional"/>
+          <xs:attribute name="EXTRACTED_FROM"     type="xs:anyURI" use="optional"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="LINKED_FILE_DESCRIPTOR" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:attribute name="LINK_URL"          type="xs:anyURI" use="required"/>
+          <xs:attribute name="RELATIVE_LINK_URL" type="xs:anyURI" use="optional"/>
+          <xs:attribute name="MIME_TYPE"         type="xs:string" use="required"/>
+          <xs:attribute name="TIME_ORIGIN"       type="xs:long"   use="optional"/>
+          <xs:attribute name="ASSOCIATED_WITH"   type="xs:anyURI" use="optional"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="PROPERTY" type="propType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="MEDIA_FILE" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>Deprecated. Use MEDIA_DESCRIPTOR elements instead.</xs:documentation>
+        <xs:appinfo>Ignore</xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="TIME_UNITS" use="optional" default="milliseconds">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="NTSC-frames"/>
+          <xs:enumeration value="PAL-frames"/>
+          <xs:enumeration value="milliseconds"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+  </xs:complexType>
+
+  <!-- TIME_ORDER -->
+  <xs:complexType name="timeType">
+    <xs:sequence>
+      <xs:element name="TIME_SLOT" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:attribute name="TIME_SLOT_ID" type="xs:ID"          use="required"/>
+          <xs:attribute name="TIME_VALUE"   type="xs:unsignedInt" use="optional"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- TIER -->
+  <xs:complexType name="tierType">
+    <xs:sequence>
+      <xs:element name="ANNOTATION" type="annotationType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="TIER_ID"              type="xs:string" use="required"/>
+    <xs:attribute name="PARTICIPANT"          type="xs:string" use="optional"/>
+    <xs:attribute name="ANNOTATOR"            type="xs:string" use="optional"/>
+    <xs:attribute name="LINGUISTIC_TYPE_REF"  type="xs:string" use="required"/>
+    <xs:attribute name="DEFAULT_LOCALE"       type="xs:IDREF"  use="optional"/>
+    <xs:attribute name="PARENT_REF"           type="xs:string" use="optional"/>
+    <xs:attribute name="EXT_REF"              type="xs:IDREF"  use="optional"/>
+    <xs:attribute name="LANG_REF"             type="xs:IDREF"  use="optional"/>
+  </xs:complexType>
+
+  <!-- ANNOTATION -->
+  <xs:complexType name="annotationType">
+    <xs:choice>
+      <xs:element name="ALIGNABLE_ANNOTATION" type="alignableType"/>
+      <xs:element name="REF_ANNOTATION"       type="refAnnoType"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="alignableType">
+    <xs:sequence>
+      <xs:element name="ANNOTATION_VALUE" type="xs:string"/>
+    </xs:sequence>
+    <xs:attributeGroup ref="annotationAttribute"/>
+    <xs:attribute name="TIME_SLOT_REF1" type="xs:IDREF" use="required"/>
+    <xs:attribute name="TIME_SLOT_REF2" type="xs:IDREF" use="required"/>
+    <xs:attribute name="SVG_REF"        type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="refAnnoType">
+    <xs:sequence>
+      <xs:element name="ANNOTATION_VALUE" type="xs:string"/>
+    </xs:sequence>
+    <xs:attributeGroup ref="annotationAttribute"/>
+    <xs:attribute name="ANNOTATION_REF"      type="xs:IDREF" use="required"/>
+    <xs:attribute name="PREVIOUS_ANNOTATION" type="xs:IDREF" use="optional"/>
+  </xs:complexType>
+
+  <xs:attributeGroup name="annotationAttribute">
+    <xs:attribute name="ANNOTATION_ID" type="xs:ID"     use="required"/>
+    <xs:attribute name="EXT_REF"       type="xs:IDREFS" use="optional"/>
+    <xs:attribute name="LANG_REF"      type="xs:IDREF"  use="optional"/>
+    <xs:attribute name="CVE_REF"       type="xs:string" use="optional"/>
+  </xs:attributeGroup>
+
+  <!-- LINGUISTIC_TYPE -->
+  <xs:complexType name="lingType">
+    <xs:attribute name="LINGUISTIC_TYPE_ID"      type="xs:string"  use="required"/>
+    <xs:attribute name="TIME_ALIGNABLE"          type="xs:boolean" use="optional"/>
+    <xs:attribute name="CONSTRAINTS"             type="xs:IDREF"   use="optional"/>
+    <xs:attribute name="GRAPHIC_REFERENCES"      type="xs:boolean" use="optional"/>
+    <xs:attribute name="CONTROLLED_VOCABULARY_REF" type="xs:string" use="optional"/>
+    <xs:attribute name="EXT_REF"                 type="xs:IDREF"   use="optional"/>
+    <xs:attribute name="LEXICON_REF"             type="xs:IDREF"   use="optional"/>
+  </xs:complexType>
+
+  <!-- LOCALE (deprecated; kept for compatibility) -->
+  <xs:complexType name="localeType">
+    <xs:attribute name="LANGUAGE_CODE" type="xs:ID"     use="required"/>
+    <xs:attribute name="COUNTRY_CODE"  type="xs:string" use="optional"/>
+    <xs:attribute name="VARIANT"       type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <!-- LANGUAGE (EAF 2.8+) -->
+  <xs:complexType name="langType">
+    <xs:attribute name="LANG_ID"    type="xs:ID"     use="required"/>
+    <xs:attribute name="LANG_DEF"   type="xs:string" use="optional"/>
+    <xs:attribute name="LANG_LABEL" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <!-- CONSTRAINT -->
+  <xs:complexType name="constraintType">
+    <xs:attribute name="STEREOTYPE"   type="xs:ID"     use="required"/>
+    <xs:attribute name="DESCRIPTION"  type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <!-- CONTROLLED_VOCABULARY -->
+  <xs:complexType name="convocType">
+    <xs:sequence>
+      <xs:element name="DESCRIPTION" type="descMultiLangType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="CV_ENTRY_ML" type="cventryType"       minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="CV_ID"   type="xs:string" use="required"/>
+    <xs:attribute name="EXT_REF" type="xs:IDREF"  use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="cventryType">
+    <xs:sequence>
+      <xs:element name="CVE_VALUE" type="cveValueType" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="CVE_ID"  type="xs:string" use="required"/>
+    <xs:attribute name="EXT_REF" type="xs:IDREF"  use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="cveValueType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="LANG_REF"    type="xs:IDREF"  use="required"/>
+        <xs:attribute name="DESCRIPTION" type="xs:string" use="optional"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="descMultiLangType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="LANG_REF" type="xs:IDREF" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <!-- PROPERTY -->
+  <xs:complexType name="propType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="NAME" type="xs:string" use="optional"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <!-- EXTERNAL_REF -->
+  <xs:complexType name="extRefType">
+    <xs:attribute name="EXT_REF_ID" type="xs:ID" use="required"/>
+    <xs:attribute name="TYPE" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="iso12620"/>
+          <xs:enumeration value="ecv"/>
+          <xs:enumeration value="cve_id"/>
+          <xs:enumeration value="lexen_id"/>
+          <xs:enumeration value="resource_url"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="VALUE" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <!-- LEXICON_REF (EAF 2.7+) -->
+  <xs:complexType name="lexRefType">
+    <xs:attribute name="LEX_REF_ID"    type="xs:ID"     use="required"/>
+    <xs:attribute name="NAME"          type="xs:string" use="required"/>
+    <xs:attribute name="TYPE"          type="xs:string" use="required"/>
+    <xs:attribute name="URL"           type="xs:string" use="required"/>
+    <xs:attribute name="LEXICON_ID"    type="xs:string" use="required"/>
+    <xs:attribute name="LEXICON_NAME"  type="xs:string" use="required"/>
+    <xs:attribute name="DATCAT_ID"     type="xs:string" use="optional"/>
+    <xs:attribute name="DATCAT_NAME"   type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <!-- LICENSE (EAF 2.8+) -->
+  <xs:complexType name="licenseType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="LICENSE_URL" type="xs:anyURI" use="optional"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <!-- REF_LINK_SET, CROSS_REF_LINK, GROUP_REF_LINK (EAF 3.0) -->
+  <xs:complexType name="refLinksType">
+    <xs:sequence>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="CROSS_REF_LINK" type="crossLinkType"/>
+        <xs:element name="GROUP_REF_LINK" type="groupLinkType"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="LINK_SET_ID"   type="xs:ID"     use="required"/>
+    <xs:attribute name="LINK_SET_NAME" type="xs:string" use="optional"/>
+    <xs:attribute name="EXT_REF"       type="xs:IDREFS" use="optional"/>
+    <xs:attribute name="LANG_REF"      type="xs:IDREF"  use="optional"/>
+    <xs:attribute name="CV_REF"        type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="crossLinkType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="REF1" type="xs:IDREF" use="required"/>
+        <xs:attribute name="REF2" type="xs:IDREF" use="required"/>
+        <xs:attribute name="DIRECTIONALITY" use="optional">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="undirected"/>
+              <xs:enumeration value="unidirectional"/>
+              <xs:enumeration value="bidirectional"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:attribute>
+        <xs:attributeGroup ref="refLinkAttribute"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="groupLinkType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="REFS" type="xs:IDREFS" use="required"/>
+        <xs:attributeGroup ref="refLinkAttribute"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:attributeGroup name="refLinkAttribute">
+    <xs:attribute name="REF_LINK_ID"   type="xs:ID"     use="required"/>
+    <xs:attribute name="REF_LINK_NAME" type="xs:string" use="optional"/>
+    <xs:attribute name="EXT_REF"       type="xs:IDREFS" use="optional"/>
+    <xs:attribute name="LANG_REF"      type="xs:IDREF"  use="optional"/>
+    <xs:attribute name="CVE_REF"       type="xs:string" use="optional"/>
+    <xs:attribute name="REF_TYPE"      type="xs:string" use="optional"/>
+  </xs:attributeGroup>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       CV_RESOURCE — alternative root for standalone controlled vocabulary
+       files (.ecv).  Not used by MMEAF itself but included for completeness.
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:element name="CV_RESOURCE">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="LANGUAGE"             type="langType"   minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="CONTROLLED_VOCABULARY" type="convocType" minOccurs="1" maxOccurs="unbounded">
+          <xs:key name="cvEntryKey2">
+            <xs:selector xpath="CV_ENTRY_ML"/>
+            <xs:field    xpath="@CVE_ID"/>
+          </xs:key>
+        </xs:element>
+        <xs:element name="EXTERNAL_REF" type="extRefType" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="DATE"    type="xs:dateTime" use="optional"/>
+      <xs:attribute name="AUTHOR"  type="xs:string"   use="optional"/>
+      <xs:attribute name="VERSION" type="xs:string"   use="optional"/>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

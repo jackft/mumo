@@ -1,0 +1,54 @@
+{
+  "name": "mumo",
+  "private": true,
+  "version": "0.0.1",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "clean": "rm -rf packages/*/dist packages/*/dist-lib packages/*/out packages/audio-analysis-wasm/pkg",
+    "build": "pnpm -r --if-present run build",
+    "prepare": "node scripts/prepare.js",
+    "build:wasm": "pnpm --filter audio-analysis-wasm build",
+    "dev": "pnpm --filter @mumo/mumo dev",
+    "dev:electron": "pnpm --filter @mumo/desktop dev",
+    "dev:server": "pnpm --filter @mumo/server dev",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "knip": "knip",
+    "check": "pnpm lint && pnpm typecheck && vitest run && knip",
+    "verify": "pnpm clean && pnpm build && pnpm check && pnpm --filter @mumo/desktop dist"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^28.0.3",
+    "@types/node": "^26.1.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "eslint": "^10.6.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.20.0",
+    "jsdom": "^29.1.1",
+    "knip": "^6.23.0",
+    "prettier": "^3.9.4",
+    "prettier-plugin-svelte": "^4.1.1",
+    "svelte": "^5.56.4",
+    "svelte-eslint-parser": "^1.8.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.1",
+    "vitest": "^4.1.9"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "electron",
+      "esbuild",
+      "leveldown",
+      "svelte-preprocess"
+    ],
+    "overrides": {
+      "prosemirror-model": "1.25.9"
+    }
+  }
+}

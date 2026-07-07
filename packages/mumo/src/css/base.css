@@ -1,0 +1,193 @@
+@import './tokens.css';
+
+@font-face {
+  font-family: 'LMMonoLt10';
+  font-weight: bold;
+  font-style: normal;
+  src: url('../fonts/lmmonolt10-bold.otf') format('opentype');
+}
+@font-face {
+  font-family: 'LMMonoLt10';
+  font-weight: bold;
+  font-style: oblique;
+  src: url('../fonts/lmmonolt10-boldoblique.otf') format('opentype');
+}
+
+/* ── Buttons ──────────────────────────────────────────────── */
+button {
+  font-family: inherit;
+  font-size: var(--font-sm);
+  padding: var(--btn-padding);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  background: var(--color-bg-0);
+  color: var(--color-text-2);
+  cursor: pointer;
+  line-height: 1.4;
+}
+button:hover { background: var(--color-bg-2); }
+button:disabled { opacity: 0.45; cursor: default; }
+
+button.primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+button.primary:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+button.active {
+  background: var(--color-active-light);
+  border-color: var(--color-active);
+  color: var(--color-active-dark);
+}
+
+button.danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+button.danger:hover {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: #fff;
+}
+
+/* ── Icon buttons ─────────────────────────────────────────── */
+.icon-btn {
+  padding: 0 0.3rem;
+  font-size: var(--font-md);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-text-placeholder);
+  border-radius: var(--radius-xs);
+  line-height: 1;
+  flex-shrink: 0;
+}
+.icon-btn:hover { background: var(--color-bg-4); color: var(--color-text-3); }
+.icon-btn.danger:hover { background: var(--color-danger-light); color: var(--color-danger); }
+
+/* ── Checkboxes ──────────────────────────────────────────── */
+input[type="checkbox"] { accent-color: var(--color-primary); }
+
+/* ── Inputs & selects ─────────────────────────────────────── */
+input[type="text"],
+input[type="number"],
+textarea {
+  font-family: inherit;
+  font-size: var(--font-sm);
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  color: var(--color-text-1);
+  background: var(--color-bg-0);
+}
+input[type="text"]:focus,
+input[type="number"]:focus,
+textarea:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+  border-color: var(--color-primary);
+}
+
+select {
+  font-family: inherit;
+  font-size: var(--font-sm);
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-0);
+  color: var(--color-text-1);
+  cursor: pointer;
+}
+select:focus { outline: 2px solid var(--color-primary); outline-offset: -1px; }
+
+/* ── Menu/dropdown panel ─────────────────────────────────── */
+.menu-panel {
+  background: var(--color-bg-0);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-menu);
+  padding: 0.3rem 0;
+}
+.menu-panel button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  padding: 0.3rem 0.8rem;
+  font-size: var(--font-sm);
+  color: var(--color-text-1);
+  background: transparent;
+}
+.menu-panel button:hover { background: var(--color-bg-menu-hover); }
+
+/* ── Section label ───────────────────────────────────────── */
+.section-label {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+/* ── Toolbar buttons ─────────────────────────────────────── */
+.tb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-3);
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.tb-btn:hover:not(:disabled) { background: var(--color-bg-4); color: var(--color-text-1); }
+.tb-btn:active:not(:disabled) { background: var(--color-bg-5); }
+.tb-btn:disabled { opacity: 0.35; cursor: default; }
+.tb-btn.active { background: var(--color-active-light); border: 1px solid var(--color-active); color: var(--color-active-dark); }
+.tb-btn.active:hover:not(:disabled) { background: var(--color-active-light); border-color: var(--color-active); color: var(--color-active-dark); }
+
+/* ── Add button (filled green) ───────────────────────────── */
+.add-btn {
+  background: var(--color-active);
+  border-color: var(--color-active);
+  color: #fff;
+}
+.add-btn:hover {
+  background: var(--color-active-hover);
+  border-color: var(--color-active-hover);
+}
+
+/* ── Copy toast ────────────────────────────────────────────── */
+@keyframes tl-copied-rise {
+  0%   { opacity: 1; transform: translate(-50%, -4px); }
+  70%  { opacity: 1; transform: translate(-50%, -14px); }
+  100% { opacity: 0; transform: translate(-50%, -18px); }
+}
+
+.tl-copied-toast {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: #333;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+  animation: tl-copied-rise 700ms ease-out forwards;
+}

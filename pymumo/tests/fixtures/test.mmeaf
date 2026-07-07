@@ -1,0 +1,662 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ANNOTATION_DOCUMENT AUTHOR="mumo" DATE="2026-07-06T05:25:47" FORMAT="3.0" VERSION="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.mpi.nl/tools/elan/EAFv3.0.xsd" xmlns:mm="https://mumo.io/ns/mmeaf/1">
+  <HEADER MEDIA_FILE="" TIME_UNITS="milliseconds"></HEADER>
+  <TIME_ORDER>
+    <TIME_SLOT TIME_SLOT_ID="ts1" TIME_VALUE="0"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts2" TIME_VALUE="1000"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts3" TIME_VALUE="1282"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts4" TIME_VALUE="2282"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts5" TIME_VALUE="2467"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts6" TIME_VALUE="3467"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts7" TIME_VALUE="3645"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts8" TIME_VALUE="4645"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts9" TIME_VALUE="4872"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts10" TIME_VALUE="5084"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts11" TIME_VALUE="5327"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts12" TIME_VALUE="6327"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts13" TIME_VALUE="6734"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts14" TIME_VALUE="7734"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts15" TIME_VALUE="9820"></TIME_SLOT>
+    <TIME_SLOT TIME_SLOT_ID="ts16" TIME_VALUE="10820"></TIME_SLOT>
+  </TIME_ORDER>
+  <TIER LINGUISTIC_TYPE_REF="lt-utterance" TIER_ID="utt:SHA" PARTICIPANT="SHA">
+    <ANNOTATION>
+      <ALIGNABLE_ANNOTATION ANNOTATION_ID="a1" TIME_SLOT_REF1="ts1" TIME_SLOT_REF2="ts2">
+        <ANNOTATION_VALUE>ugliest so we gotta make c&apos;ncessions hh ˙hhhheh</ANNOTATION_VALUE>
+      </ALIGNABLE_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <ALIGNABLE_ANNOTATION ANNOTATION_ID="a2" TIME_SLOT_REF1="ts15" TIME_SLOT_REF2="ts16">
+        <ANNOTATION_VALUE>hm-hmh yih hmh (.) ˙huhh Best nh hnh Best</ANNOTATION_VALUE>
+      </ALIGNABLE_ANNOTATION>
+    </ANNOTATION>
+  </TIER>
+  <TIER LINGUISTIC_TYPE_REF="lt-utterance" TIER_ID="utt:VIV" PARTICIPANT="VIV">
+    <ANNOTATION>
+      <ALIGNABLE_ANNOTATION ANNOTATION_ID="a3" TIME_SLOT_REF1="ts3" TIME_SLOT_REF2="ts4">
+        <ANNOTATION_VALUE>n:heyuh</ANNOTATION_VALUE>
+      </ALIGNABLE_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <ALIGNABLE_ANNOTATION ANNOTATION_ID="a4" TIME_SLOT_REF1="ts7" TIME_SLOT_REF2="ts8">
+        <ANNOTATION_VALUE>Move a little, can you? </ANNOTATION_VALUE>
+      </ALIGNABLE_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <ALIGNABLE_ANNOTATION ANNOTATION_ID="a5" TIME_SLOT_REF1="ts11" TIME_SLOT_REF2="ts12">
+        <ANNOTATION_VALUE>°Thanks°</ANNOTATION_VALUE>
+      </ALIGNABLE_ANNOTATION>
+    </ANNOTATION>
+  </TIER>
+  <TIER LINGUISTIC_TYPE_REF="lt-utterance" TIER_ID="utt:MIC" PARTICIPANT="MIC">
+    <ANNOTATION>
+      <ALIGNABLE_ANNOTATION ANNOTATION_ID="a6" TIME_SLOT_REF1="ts5" TIME_SLOT_REF2="ts6">
+        <ANNOTATION_VALUE>I do&apos; wan&apos;t &apos;day</ANNOTATION_VALUE>
+      </ALIGNABLE_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <ALIGNABLE_ANNOTATION ANNOTATION_ID="a7" TIME_SLOT_REF1="ts9" TIME_SLOT_REF2="ts10">
+        <ANNOTATION_VALUE>Mostly taragoose</ANNOTATION_VALUE>
+      </ALIGNABLE_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <ALIGNABLE_ANNOTATION ANNOTATION_ID="a8" TIME_SLOT_REF1="ts13" TIME_SLOT_REF2="ts14">
+        <ANNOTATION_VALUE>Bes&apos; girl does&apos;n it?</ANNOTATION_VALUE>
+      </ALIGNABLE_ANNOTATION>
+    </ANNOTATION>
+  </TIER>
+  <TIER LINGUISTIC_TYPE_REF="lt-token" TIER_ID="SHA" PARENT_REF="participant:SHA" PARTICIPANT="SHA">
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a9" ANNOTATION_REF="a1">
+        <ANNOTATION_VALUE>ugliest</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a10" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a9">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a11" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a10">
+        <ANNOTATION_VALUE>so</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a12" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a11">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a13" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a12">
+        <ANNOTATION_VALUE>we</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a14" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a13">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a15" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a14">
+        <ANNOTATION_VALUE>gotta</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a16" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a15">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a17" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a16">
+        <ANNOTATION_VALUE>make</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a18" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a17">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a19" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a18">
+        <ANNOTATION_VALUE>c&apos;ncessions</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a20" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a19">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a21" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a20">
+        <ANNOTATION_VALUE>hh</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a22" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a21">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a23" ANNOTATION_REF="a1" PREVIOUS_ANNOTATION="a22">
+        <ANNOTATION_VALUE>˙hhhheh</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a24" ANNOTATION_REF="a2">
+        <ANNOTATION_VALUE>hm-hmh</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a25" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a24">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a26" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a25">
+        <ANNOTATION_VALUE>yih</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a27" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a26">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a28" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a27">
+        <ANNOTATION_VALUE>hmh</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a29" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a28">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a30" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a29">
+        <ANNOTATION_VALUE>(.)</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a31" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a30">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a32" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a31">
+        <ANNOTATION_VALUE>˙huhh</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a33" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a32">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a34" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a33">
+        <ANNOTATION_VALUE>Best</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a35" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a34">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a36" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a35">
+        <ANNOTATION_VALUE>nh</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a37" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a36">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a38" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a37">
+        <ANNOTATION_VALUE>hnh</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a39" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a38">
+        <ANNOTATION_VALUE> </ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a40" ANNOTATION_REF="a2" PREVIOUS_ANNOTATION="a39">
+        <ANNOTATION_VALUE>Best</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+  </TIER>
+  <TIER LINGUISTIC_TYPE_REF="symbolic_association" TIER_ID="POS" PARENT_REF="SHA" PARTICIPANT="SHA">
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a41" ANNOTATION_REF="a9">
+        <ANNOTATION_VALUE>ADJ</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a42" ANNOTATION_REF="a11">
+        <ANNOTATION_VALUE>CONJ</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a43" ANNOTATION_REF="a13">
+        <ANNOTATION_VALUE>NOUN</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a44" ANNOTATION_REF="a15">
+        <ANNOTATION_VALUE>VERB</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a45" ANNOTATION_REF="a17">
+        <ANNOTATION_VALUE>VERB</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a46" ANNOTATION_REF="a19">
+        <ANNOTATION_VALUE>NOUN</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a47" ANNOTATION_REF="a21">
+        <ANNOTATION_VALUE>BREATH</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a48" ANNOTATION_REF="a23">
+        <ANNOTATION_VALUE>BREATH</ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a49" ANNOTATION_REF="a24">
+        <ANNOTATION_VALUE></ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a50" ANNOTATION_REF="a26">
+        <ANNOTATION_VALUE></ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a51" ANNOTATION_REF="a28">
+        <ANNOTATION_VALUE></ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a52" ANNOTATION_REF="a30">
+        <ANNOTATION_VALUE></ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a53" ANNOTATION_REF="a32">
+        <ANNOTATION_VALUE></ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a54" ANNOTATION_REF="a34">
+        <ANNOTATION_VALUE></ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a55" ANNOTATION_REF="a36">
+        <ANNOTATION_VALUE></ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a56" ANNOTATION_REF="a38">
+        <ANNOTATION_VALUE></ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+    <ANNOTATION>
+      <REF_ANNOTATION ANNOTATION_ID="a57" ANNOTATION_REF="a40">
+        <ANNOTATION_VALUE></ANNOTATION_VALUE>
+      </REF_ANNOTATION>
+    </ANNOTATION>
+  </TIER>
+  <LINGUISTIC_TYPE LINGUISTIC_TYPE_ID="lt-utterance" TIME_ALIGNABLE="true" GRAPHIC_REFERENCES="false"></LINGUISTIC_TYPE>
+  <LINGUISTIC_TYPE LINGUISTIC_TYPE_ID="lt-token" TIME_ALIGNABLE="false" CONSTRAINTS="Symbolic_Subdivision" GRAPHIC_REFERENCES="false"></LINGUISTIC_TYPE>
+  <LINGUISTIC_TYPE LINGUISTIC_TYPE_ID="Default" TIME_ALIGNABLE="false" GRAPHIC_REFERENCES="false"></LINGUISTIC_TYPE>
+  <LINGUISTIC_TYPE LINGUISTIC_TYPE_ID="Default" TIME_ALIGNABLE="false" GRAPHIC_REFERENCES="false"></LINGUISTIC_TYPE>
+  <LINGUISTIC_TYPE LINGUISTIC_TYPE_ID="symbolic_association" TIME_ALIGNABLE="false" GRAPHIC_REFERENCES="false" CONSTRAINTS="Symbolic_Association"></LINGUISTIC_TYPE>
+  <CONSTRAINT DESCRIPTION="Time subdivision of parent annotation&apos;s time interval, no time gaps allowed within this interval" STEREOTYPE="Time_Subdivision"></CONSTRAINT>
+  <CONSTRAINT DESCRIPTION="Temporal subdivision of parent annotation&apos;s time interval, gaps are allowed" STEREOTYPE="Included_In"></CONSTRAINT>
+  <CONSTRAINT DESCRIPTION="1-1 association with a parent annotation" STEREOTYPE="Symbolic_Association"></CONSTRAINT>
+  <CONSTRAINT DESCRIPTION="Symbolic subdivision of a parent annotation. Annotations refering to the same parent are ordered" STEREOTYPE="Symbolic_Subdivision"></CONSTRAINT>
+  <CONTROLLED_VOCABULARY CV_ID="Trouble type">
+    <CV_ENTRY_ML CVE_ID="tt-hearability">
+      <CVE_VALUE LANG_REF="und">hearability</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">Could not hear / too quiet</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="tt-reference">
+      <CVE_VALUE LANG_REF="und">reference</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">Referent unclear or unknown</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="tt-grammar">
+      <CVE_VALUE LANG_REF="und">grammar/syntax</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">Grammatical or syntactic issue</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="tt-factual">
+      <CVE_VALUE LANG_REF="und">factual</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">Factual accuracy questioned</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="tt-other">
+      <CVE_VALUE LANG_REF="und">other</CVE_VALUE>
+    </CV_ENTRY_ML>
+  </CONTROLLED_VOCABULARY>
+  <CONTROLLED_VOCABULARY CV_ID="Initiation type">
+    <CV_ENTRY_ML CVE_ID="it-open-class">
+      <CVE_VALUE LANG_REF="und">open class</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">huh?, what?, pardon?</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="it-partial">
+      <CVE_VALUE LANG_REF="und">partial repeat</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">Repeat of trouble source fragment</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="it-wh">
+      <CVE_VALUE LANG_REF="und">wh-word</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">who?, which?, where? etc.</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="it-candidate">
+      <CVE_VALUE LANG_REF="und">candidate understanding</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">Proposed understanding for confirmation</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="it-other">
+      <CVE_VALUE LANG_REF="und">other</CVE_VALUE>
+    </CV_ENTRY_ML>
+  </CONTROLLED_VOCABULARY>
+  <CONTROLLED_VOCABULARY CV_ID="Solution type">
+    <CV_ENTRY_ML CVE_ID="st-repeat">
+      <CVE_VALUE LANG_REF="und">repeat</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">Repeated with emphasis or clarification</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="st-correction">
+      <CVE_VALUE LANG_REF="und">correction</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">Replaced trouble source with correct form</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="st-reformulation">
+      <CVE_VALUE LANG_REF="und">reformulation</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">Rephrased or restructured</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="st-abandoned">
+      <CVE_VALUE LANG_REF="und">abandoned</CVE_VALUE>
+      <DESCRIPTION LANG_REF="und">Repair attempt abandoned</DESCRIPTION>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="st-other">
+      <CVE_VALUE LANG_REF="und">other</CVE_VALUE>
+    </CV_ENTRY_ML>
+  </CONTROLLED_VOCABULARY>
+  <CONTROLLED_VOCABULARY CV_ID="FPP type">
+    <CV_ENTRY_ML CVE_ID="fpp-question">
+      <CVE_VALUE LANG_REF="und">question</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="fpp-request">
+      <CVE_VALUE LANG_REF="und">request</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="fpp-invitation">
+      <CVE_VALUE LANG_REF="und">invitation</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="fpp-offer">
+      <CVE_VALUE LANG_REF="und">offer</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="fpp-assessment">
+      <CVE_VALUE LANG_REF="und">assessment</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="fpp-greeting">
+      <CVE_VALUE LANG_REF="und">greeting</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="fpp-complaint">
+      <CVE_VALUE LANG_REF="und">complaint</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="fpp-announcement">
+      <CVE_VALUE LANG_REF="und">announcement</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="fpp-other">
+      <CVE_VALUE LANG_REF="und">other</CVE_VALUE>
+    </CV_ENTRY_ML>
+  </CONTROLLED_VOCABULARY>
+  <CONTROLLED_VOCABULARY CV_ID="SPP type">
+    <CV_ENTRY_ML CVE_ID="spp-answer">
+      <CVE_VALUE LANG_REF="und">answer</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="spp-acceptance">
+      <CVE_VALUE LANG_REF="und">acceptance</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="spp-rejection">
+      <CVE_VALUE LANG_REF="und">rejection</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="spp-counter">
+      <CVE_VALUE LANG_REF="und">counter-assessment</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="spp-grant">
+      <CVE_VALUE LANG_REF="und">grant/comply</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="spp-greeting">
+      <CVE_VALUE LANG_REF="und">return greeting</CVE_VALUE>
+    </CV_ENTRY_ML>
+    <CV_ENTRY_ML CVE_ID="spp-other">
+      <CVE_VALUE LANG_REF="und">other</CVE_VALUE>
+    </CV_ENTRY_ML>
+  </CONTROLLED_VOCABULARY>
+  <mm:mumo_data format_version="1">
+    <mm:id_map>
+      <mm:id eaf="a1" id="1783311184358-1k111g6m451n"></mm:id>
+      <mm:id eaf="a2" id="1783311297612-1y262g2v0m04"></mm:id>
+      <mm:id eaf="a3" id="1783311184358-32163f6d6x1c"></mm:id>
+      <mm:id eaf="a4" id="1783311184358-5x52273d033c"></mm:id>
+      <mm:id eaf="a5" id="1783311184358-2o3z3w2j6j5t"></mm:id>
+      <mm:id eaf="a6" id="1783311184358-3u6d306i3229"></mm:id>
+      <mm:id eaf="a7" id="1783311184358-0x2d1p3y312s"></mm:id>
+      <mm:id eaf="a8" id="1783311184358-2d265u2p0c4l"></mm:id>
+      <mm:id eaf="a9" id="1783311184363-1j583s6y3s14"></mm:id>
+      <mm:id eaf="a10" id="1783311184363-5h5k6x676u6b"></mm:id>
+      <mm:id eaf="a11" id="1783311184363-5h17534z4o1k"></mm:id>
+      <mm:id eaf="a12" id="1783311184363-0u2e2o0e1x3n"></mm:id>
+      <mm:id eaf="a13" id="1783311184363-401a0p4t3k0u"></mm:id>
+      <mm:id eaf="a14" id="1783311184363-2t0i5a5c0r10"></mm:id>
+      <mm:id eaf="a15" id="1783311184363-4e2t5o6g5036"></mm:id>
+      <mm:id eaf="a16" id="1783311184363-1l5v4l040f46"></mm:id>
+      <mm:id eaf="a17" id="1783311184363-335y3c704v3t"></mm:id>
+      <mm:id eaf="a18" id="1783311184363-1m2x2s4l565l"></mm:id>
+      <mm:id eaf="a19" id="1783311184363-4t1u6p1q6s09"></mm:id>
+      <mm:id eaf="a20" id="1783311184363-5g410x711726"></mm:id>
+      <mm:id eaf="a21" id="1783311184363-5w2h0u4a6041"></mm:id>
+      <mm:id eaf="a22" id="1783311184363-1b4k36706s1t"></mm:id>
+      <mm:id eaf="a23" id="1783311184363-64724l670669"></mm:id>
+      <mm:id eaf="a24" id="1783311297618-4i5z3x5n0o57"></mm:id>
+      <mm:id eaf="a25" id="1783312087592-2m022r695q0k"></mm:id>
+      <mm:id eaf="a26" id="1783311297618-2s5w3f3y6u0a"></mm:id>
+      <mm:id eaf="a27" id="1783311297618-3c0i5d1h0b44"></mm:id>
+      <mm:id eaf="a28" id="1783311297619-0w4k6g093k5d"></mm:id>
+      <mm:id eaf="a29" id="1783311297618-3q1r3r5u543g"></mm:id>
+      <mm:id eaf="a30" id="1783311297619-6s3k6h4x334g"></mm:id>
+      <mm:id eaf="a31" id="1783311297619-3t1o2k6v1c19"></mm:id>
+      <mm:id eaf="a32" id="1783311297619-2z0m0v593d1b"></mm:id>
+      <mm:id eaf="a33" id="1783311297619-4d2y4i1z681w"></mm:id>
+      <mm:id eaf="a34" id="1783311297619-171l181k4f4c"></mm:id>
+      <mm:id eaf="a35" id="1783311297619-1k5e241l3z0q"></mm:id>
+      <mm:id eaf="a36" id="1783311297619-0g2r21403j4n"></mm:id>
+      <mm:id eaf="a37" id="1783311297619-3u6t1t1t4s2d"></mm:id>
+      <mm:id eaf="a38" id="1783311297619-136a3d004d6s"></mm:id>
+      <mm:id eaf="a39" id="1783311297619-0c6t3c4j0865"></mm:id>
+      <mm:id eaf="a40" id="1783311297619-0q6j3w4o0q4z"></mm:id>
+      <mm:id eaf="a41" id="1783315515270-322m6q5m4o0r"></mm:id>
+      <mm:id eaf="a42" id="1783315515271-4x1z0w5h5n0d"></mm:id>
+      <mm:id eaf="a43" id="1783315515271-736d5y1n220x"></mm:id>
+      <mm:id eaf="a44" id="1783315515271-35252t0g3i0g"></mm:id>
+      <mm:id eaf="a45" id="1783315515271-2m1f190c4h2v"></mm:id>
+      <mm:id eaf="a46" id="1783315515271-344b5y5o0068"></mm:id>
+      <mm:id eaf="a47" id="1783315515271-4m3n3i2c4i27"></mm:id>
+      <mm:id eaf="a48" id="1783315515271-032n2o1w1g3f"></mm:id>
+      <mm:id eaf="a49" id="1783315515271-3x0k0u33070c"></mm:id>
+      <mm:id eaf="a50" id="1783315515271-4x1i73692h5m"></mm:id>
+      <mm:id eaf="a51" id="1783315515271-65070p0z1x0y"></mm:id>
+      <mm:id eaf="a52" id="1783315515271-3l051a5c0s5a"></mm:id>
+      <mm:id eaf="a53" id="1783315515271-3v4g381u134j"></mm:id>
+      <mm:id eaf="a54" id="1783315515271-3x6d3v20094r"></mm:id>
+      <mm:id eaf="a55" id="1783315515271-4p4c15613727"></mm:id>
+      <mm:id eaf="a56" id="1783315515271-6j170x2a611i"></mm:id>
+      <mm:id eaf="a57" id="1783315515271-0f1n2v0m5k5o"></mm:id>
+      <mm:vocab_id eaf="Trouble type" id="builtin:vocab:trouble-type"></mm:vocab_id>
+      <mm:vocab_id eaf="Initiation type" id="builtin:vocab:initiation-type"></mm:vocab_id>
+      <mm:vocab_id eaf="Solution type" id="builtin:vocab:solution-type"></mm:vocab_id>
+      <mm:vocab_id eaf="FPP type" id="builtin:vocab:fpp-type"></mm:vocab_id>
+      <mm:vocab_id eaf="SPP type" id="builtin:vocab:spp-type"></mm:vocab_id>
+    </mm:id_map>
+    <mm:transcript_structure>
+      <mm:utt order="0" block_id="1783311184358-1k111g6m451n" participant="SHA" start_ms="0" end_ms="1000" tier="utt:SHA">
+        <mm:t type="word" id="1783311184363-1j583s6y3s14">ugliest</mm:t>
+        <mm:t type="ws" id="1783311184363-5h5k6x676u6b"> </mm:t>
+        <mm:t type="word" id="1783311184363-5h17534z4o1k">so</mm:t>
+        <mm:t type="ws" id="1783311184363-0u2e2o0e1x3n"> </mm:t>
+        <mm:t type="word" id="1783311184363-401a0p4t3k0u">we</mm:t>
+        <mm:t type="ws" id="1783311184363-2t0i5a5c0r10"> </mm:t>
+        <mm:t type="word" id="1783311184363-4e2t5o6g5036">gotta</mm:t>
+        <mm:t type="ws" id="1783311184363-1l5v4l040f46"> </mm:t>
+        <mm:t type="word" id="1783311184363-335y3c704v3t">make</mm:t>
+        <mm:t type="ws" id="1783311184363-1m2x2s4l565l"> </mm:t>
+        <mm:t type="word" id="1783311184363-4t1u6p1q6s09">c&apos;ncessions</mm:t>
+        <mm:t type="ws" id="1783311184363-5g410x711726"> </mm:t>
+        <mm:t type="word" id="1783311184363-5w2h0u4a6041">hh</mm:t>
+        <mm:t type="ws" id="1783311184363-1b4k36706s1t"> </mm:t>
+        <mm:t type="word" id="1783311184363-64724l670669">˙hhhheh</mm:t>
+        <mm:inline_mark type="overlap_bracket" group_id="a" kind="start" char_offset="16"></mm:inline_mark>
+        <mm:inline_mark type="overlap_bracket" group_id="a" kind="end" char_offset="32"></mm:inline_mark>
+        <mm:inline_mark type="overlap_bracket" group_id="b" kind="start" char_offset="44"></mm:inline_mark>
+      </mm:utt>
+      <mm:utt order="1" block_id="1783311184358-32163f6d6x1c" participant="VIV" start_ms="1282" end_ms="2282" tier="utt:VIV">
+        <mm:t type="word" id="1783311184364-0z59311v2d6x">n:heyuh</mm:t>
+        <mm:inline_mark type="overlap_bracket" group_id="a" kind="start" char_offset="0"></mm:inline_mark>
+        <mm:inline_mark type="overlap_bracket" group_id="a" kind="end" char_offset="7"></mm:inline_mark>
+      </mm:utt>
+      <mm:utt order="2" block_id="1783311184358-3u6d306i3229" participant="MIC" start_ms="2467" end_ms="3467" tier="utt:MIC">
+        <mm:t type="word" id="1783311184365-36014i196r1w">I</mm:t>
+        <mm:t type="ws" id="1783311184365-4w5w5e401a6k"> </mm:t>
+        <mm:t type="word" id="1783311184365-3r4h5x49535e">do&apos;</mm:t>
+        <mm:t type="ws" id="1783311184365-4d63033p6i6e"> </mm:t>
+        <mm:t type="word" id="1783311184365-0m471w6v670y">wan&apos;t</mm:t>
+        <mm:t type="ws" id="1783311184365-735b5h1k080p"> </mm:t>
+        <mm:t type="word" id="1783311184365-6r523r5s5t04">&apos;day</mm:t>
+        <mm:inline_mark type="overlap_bracket" group_id="b" kind="start" char_offset="0"></mm:inline_mark>
+      </mm:utt>
+      <mm:utt order="3" block_id="1783311184358-5x52273d033c" participant="VIV" start_ms="3645" end_ms="4645" tier="utt:VIV">
+        <mm:t type="word" id="1783311184365-4e2y4x4r0n72">Move</mm:t>
+        <mm:t type="ws" id="1783311184365-5561566c4p5p"> </mm:t>
+        <mm:t type="word" id="1783311184365-482m3p01353t">a</mm:t>
+        <mm:t type="ws" id="1783311184365-0v2m6z5s4w2c"> </mm:t>
+        <mm:t type="word" id="1783311184365-1z1l6m0z3u56">little</mm:t>
+        <mm:t type="punct" id="1783311184365-441p3t4x2o73">,</mm:t>
+        <mm:t type="ws" id="1783311184365-2d2p3i4j4k6x"> </mm:t>
+        <mm:t type="word" id="1783311184365-392m3g2i5z5y">can</mm:t>
+        <mm:t type="ws" id="1783311184365-1f371q0n470b"> </mm:t>
+        <mm:t type="word" id="1783311184365-1m434u0k1t28">you</mm:t>
+        <mm:t type="punct" id="1783311184365-6s3z6a676853">?</mm:t>
+        <mm:t type="ws" id="1783311184365-615t3m4n422m"> </mm:t>
+        <mm:inline_mark type="overlap_bracket" group_id="c" kind="start" char_offset="15"></mm:inline_mark>
+        <mm:inline_mark type="overlap_bracket" group_id="c" kind="end" char_offset="24"></mm:inline_mark>
+      </mm:utt>
+      <mm:utt order="4" block_id="1783311184358-0x2d1p3y312s" participant="MIC" start_ms="4872" end_ms="5084" tier="utt:MIC">
+        <mm:t type="word" id="1783311184365-0r3y6f3e1a3s">Mostly</mm:t>
+        <mm:t type="ws" id="1783311184365-1d221m441u51"> </mm:t>
+        <mm:t type="word" id="1783311184365-4z52722g1r1f">taragoose</mm:t>
+        <mm:inline_mark type="overlap_bracket" group_id="c" kind="start" char_offset="0"></mm:inline_mark>
+        <mm:inline_mark type="overlap_bracket" group_id="c" kind="end" char_offset="9"></mm:inline_mark>
+      </mm:utt>
+      <mm:utt order="5" block_id="1783311184358-2o3z3w2j6j5t" participant="VIV" start_ms="5327" end_ms="6327" tier="utt:VIV">
+        <mm:t type="word" id="1783311184365-444u4l34090b">°Thanks°</mm:t>
+      </mm:utt>
+      <mm:utt order="6" block_id="1783311184358-2d265u2p0c4l" participant="MIC" start_ms="6734" end_ms="7734" tier="utt:MIC">
+        <mm:t type="word" id="1783311184365-235y063n1t6v">Bes&apos;</mm:t>
+        <mm:t type="ws" id="1783311184365-4o29612j4e58"> </mm:t>
+        <mm:t type="word" id="1783312082138-2v625d4s102s">girl</mm:t>
+        <mm:t type="ws" id="1783311184365-6c196j0k6c0d"> </mm:t>
+        <mm:t type="word" id="1783311184365-0u2e5b5j1l4u">does&apos;n</mm:t>
+        <mm:t type="ws" id="1783312082138-1k5u4e292s22"> </mm:t>
+        <mm:t type="word" id="1783311184365-5n6s120v1972">it</mm:t>
+        <mm:t type="punct" id="1783311184365-6j221e5e6s6h">?</mm:t>
+        <mm:inline_mark type="overlap_bracket" group_id="d" kind="start" char_offset="17"></mm:inline_mark>
+      </mm:utt>
+      <mm:utt order="7" block_id="1783311297612-1y262g2v0m04" participant="SHA" start_ms="9820" end_ms="10820" tier="utt:SHA">
+        <mm:t type="word" id="1783311297618-4i5z3x5n0o57">hm-hmh</mm:t>
+        <mm:t type="ws" id="1783312087592-2m022r695q0k"> </mm:t>
+        <mm:t type="word" id="1783311297618-2s5w3f3y6u0a">yih</mm:t>
+        <mm:t type="ws" id="1783311297618-3c0i5d1h0b44"> </mm:t>
+        <mm:t type="word" id="1783311297619-0w4k6g093k5d">hmh</mm:t>
+        <mm:t type="ws" id="1783311297618-3q1r3r5u543g"> </mm:t>
+        <mm:t type="gap" id="1783311297619-6s3k6h4x334g">(.)</mm:t>
+        <mm:t type="ws" id="1783311297619-3t1o2k6v1c19"> </mm:t>
+        <mm:t type="word" id="1783311297619-2z0m0v593d1b">˙huhh</mm:t>
+        <mm:t type="ws" id="1783311297619-4d2y4i1z681w"> </mm:t>
+        <mm:t type="word" id="1783311297619-171l181k4f4c">Best</mm:t>
+        <mm:t type="ws" id="1783311297619-1k5e241l3z0q"> </mm:t>
+        <mm:t type="word" id="1783311297619-0g2r21403j4n">nh</mm:t>
+        <mm:t type="ws" id="1783311297619-3u6t1t1t4s2d"> </mm:t>
+        <mm:t type="word" id="1783311297619-136a3d004d6s">hnh</mm:t>
+        <mm:t type="ws" id="1783311297619-0c6t3c4j0865"> </mm:t>
+        <mm:t type="word" id="1783311297619-0q6j3w4o0q4z">Best</mm:t>
+      </mm:utt>
+    </mm:transcript_structure>
+    <mm:pattern_schemas>
+      <mm:pattern_schema id="builtin:repair" name="Repair" description="Other-initiated self-repair (Schegloff et al. 1977)">
+        <mm:slot id="trouble" name="trouble" anchor_kind="span" required="true" label="Trouble source">
+          <mm:metric id="trouble-type" name="Trouble type" type="categorical" vocabulary_id="builtin:vocab:trouble-type"></mm:metric>
+        </mm:slot>
+        <mm:slot id="initiation" name="initiation" anchor_kind="span" required="true" label="Repair initiation">
+          <mm:metric id="initiation-type" name="Initiation type" type="categorical" vocabulary_id="builtin:vocab:initiation-type"></mm:metric>
+        </mm:slot>
+        <mm:slot id="solution" name="solution" anchor_kind="span" label="Repair proper">
+          <mm:metric id="is-solved" name="Resolved?" type="boolean"></mm:metric>
+          <mm:metric id="solution-type" name="Solution type" type="categorical" vocabulary_id="builtin:vocab:solution-type"></mm:metric>
+        </mm:slot>
+      </mm:pattern_schema>
+      <mm:pattern_schema id="builtin:adj-pair" name="Adjacency Pair" description="First and second pair parts (Schegloff &amp; Sacks 1973)">
+        <mm:slot id="fpp" name="fpp" anchor_kind="utterance" required="true" label="First Pair Part">
+          <mm:metric id="fpp-type" name="FPP type" type="categorical" vocabulary_id="builtin:vocab:fpp-type"></mm:metric>
+        </mm:slot>
+        <mm:slot id="spp" name="spp" anchor_kind="utterance" required="true" label="Second Pair Part">
+          <mm:metric id="spp-type" name="SPP type" type="categorical" vocabulary_id="builtin:vocab:spp-type"></mm:metric>
+          <mm:metric id="preferred" name="Preferred?" type="boolean"></mm:metric>
+        </mm:slot>
+      </mm:pattern_schema>
+    </mm:pattern_schemas>
+    <mm:patterns>
+      <mm:pattern id="1783311410290-5m2k683d4s3g" schema_id="builtin:adj-pair">
+        <mm:slot_instance id="1783311564320-7368396r720g" schema_slot_id="fpp" annotation_id="1783311564320-3u0b3h0v4p37">
+          <mm:metric_value schema_id="fpp-type" value="assessment"></mm:metric_value>
+        </mm:slot_instance>
+        <mm:slot_instance id="1783311568637-6p0p11443t4e" schema_slot_id="spp" annotation_id="1783311568637-5e1t5g1c0i65">
+          <mm:metric_value schema_id="spp-type" value="acceptance"></mm:metric_value>
+        </mm:slot_instance>
+      </mm:pattern>
+    </mm:patterns>
+    <mm:marks>
+      <mm:mark id="1783311612971-5f3f130b606i" block_id="1783311184358-2o3z3w2j6j5t" start="0" end="8"></mm:mark>
+    </mm:marks>
+    <mm:textlets>
+      <mm:textlet id="1783311612992-61154q19265p" mark_id="1783311612971-5f3f130b606i" type="">
+        <mm:codes>
+          <mm:code>thanks</mm:code>
+        </mm:codes>
+      </mm:textlet>
+    </mm:textlets>
+    <mm:annotations>
+      <mm:annotation id="1783311415414-1q4r452w1m2e" type="">
+        <mm:feature name="utteranceId">1783311184358-5x52273d033c</mm:feature>
+      </mm:annotation>
+      <mm:annotation id="1783311419071-072o3o1a6y3c" type="">
+        <mm:feature name="utteranceId">1783311184358-2o3z3w2j6j5t</mm:feature>
+      </mm:annotation>
+      <mm:annotation id="1783311564320-3u0b3h0v4p37" type="">
+        <mm:feature name="utteranceId">1783311184358-2d265u2p0c4l</mm:feature>
+      </mm:annotation>
+      <mm:annotation id="1783311568637-5e1t5g1c0i65" type="">
+        <mm:feature name="utteranceId">1783311184358-350d4b5l6i63</mm:feature>
+      </mm:annotation>
+    </mm:annotations>
+    <mm:participants>
+      <mm:participant id="1783311190973-731o352a2o4l" label="SHA"></mm:participant>
+      <mm:participant id="1783311196256-2r7056572l6f" label="VIV"></mm:participant>
+      <mm:participant id="1783311200449-513q3w5o5u4q" label="MIC"></mm:participant>
+    </mm:participants>
+  </mm:mumo_data>
+</ANNOTATION_DOCUMENT>

@@ -1,0 +1,53 @@
+# Build outputs
+dist/
+dist-lib/
+build/
+packages/desktop/out/
+packages/audio-analysis-wasm/pkg/
+
+# Dependencies
+node_modules/
+
+# Rust/Tauri build artifacts
+target/
+src-tauri/target/
+
+# Server runtime data
+packages/server/data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/settings.json
+
+# Vite cache / temp files
+.vite/
+*.timestamp-*.mjs
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Test media and profiling dumps at repo root
+*.mp4
+*.eaf
+*.wav
+*.cha
+*.mumo
+/*.mmeaf
+*.json.gz
+*.csv
+package-lock.json
+
+# Generated public assets (copied from node_modules by scripts/prepare.js)
+packages/mumo/public/*.wasm
+packages/mumo/public/*.onnx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/

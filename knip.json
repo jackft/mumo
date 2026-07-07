@@ -1,0 +1,27 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": ["packages/mumo/public/ort-wasm-simd-threaded.jsep.mjs"],
+  "workspaces": {
+    ".": {
+      "entry": [],
+      "project": []
+    },
+    "packages/*": {},
+    "packages/mumo": {
+      "entry": [],
+      "ignore": []
+    },
+    "packages/desktop": {
+      "entry": [
+        "src/main/index.ts",
+        "src/preload/index.ts",
+        "src/renderer/index.ts",
+        "electron.vite.config.ts"
+      ],
+      "project": ["src/**", "*.ts"]
+    }
+  },
+  "tags": ["+public"],
+  "ignoreExportsUsedInFile": true,
+  "ignoreBinaries": ["wasm-pack"]
+}

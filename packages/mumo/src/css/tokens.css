@@ -1,0 +1,71 @@
+:root {
+  /* Primary — sky blue */
+  --color-primary: #5BBCD6;
+  --color-primary-hover: #42A8C4;
+  --color-primary-light: #E5F6FB;
+  --color-primary-dark: #1E7E9A;
+  --color-primary-border: #9AD3E9;
+
+  /* Danger — red */
+  --color-danger: #FF0000;
+  --color-danger-hover: #D40000;
+  --color-danger-light: #FFE8E8;
+
+  /* Active — teal */
+  --color-active: #00A08A;
+  --color-active-hover: #00877A;
+  --color-active-light: #E0F5F2;
+  --color-active-dark: #006659;
+  --color-active-border: #7DD2C8;
+
+  /* Grays */
+  --color-bg-0: #fff;
+  --color-bg-1: #fafafa;
+  --color-bg-2: #f5f5f5;
+  --color-bg-3: #f0f0f0;
+  --color-bg-4: #e8e8e8;
+  --color-bg-5: #e0e0e0;
+  --color-bg-menu-hover: #ECF7FB;
+
+  /* Borders */
+  --color-border: #ccc;
+  --color-border-strong: #ddd;
+
+  /* Text */
+  --color-text-1: #222;
+  --color-text-2: #444;
+  --color-text-3: #666;
+  --color-text-muted: #999;
+  --color-text-light: #888;
+  --color-text-faint: #bbb;
+  --color-text-placeholder: #aaa;
+
+  /* Status */
+  --color-status-ok: #00A08A;
+  --color-status-warn: #F2AD00;
+
+  /* Domain colors (shared with timeline palette) */
+  --color-event: #9575cd;
+  --color-event-light: #f5f0ff;
+  --color-annotation: #26a69a;
+  --color-annotation-light: #edfaf8;
+
+  /* Border radii */
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Font sizes */
+  --font-xs: 0.72rem;
+  --font-sm: 0.8rem;
+  --font-md: 0.85rem;
+  --font-base: 0.9rem;
+
+  /* Button padding */
+  --btn-padding: 0.28rem 0.65rem;
+
+  /* Shadows */
+  --shadow-menu: 0 4px 16px rgba(0,0,0,0.12);
+  --shadow-menu-sm: 0 3px 12px rgba(0,0,0,0.14);
+}

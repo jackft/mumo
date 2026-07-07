@@ -1,0 +1,27 @@
+{
+  "name": "@mumo/server",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.6",
+    "@mumo/core": "workspace:*",
+    "hono": "^4.12.27",
+    "ws": "^8.21.0",
+    "y-leveldb": "^0.2.0",
+    "y-websocket": "^1.5.4",
+    "yjs": "^13.6.31"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

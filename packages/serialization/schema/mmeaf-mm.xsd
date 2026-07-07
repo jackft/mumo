@@ -1,0 +1,826 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  MMEAF — MuMo Multimodal ELAN Annotation Format
+  mm: namespace schema  (https://mumo.io/ns/mmeaf/1)
+
+  All MuMo-specific extensions live in this namespace.  They are embedded
+  inside a standard EAF 3.0 ANNOTATION_DOCUMENT as a single <mm:mumo_data>
+  child.  ELAN 6.x ignores unknown namespaced elements, so files remain
+  valid EAF.
+
+  Companion document schema: mmeaf.xsd (no-namespace, EAF-compatible root)
+-->
+<xs:schema
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns:mm="https://mumo.io/ns/mmeaf/1"
+  targetNamespace="https://mumo.io/ns/mmeaf/1"
+  elementFormDefault="qualified">
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Root extension element
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:element name="mumo_data" type="mm:MumoDataType">
+    <xs:annotation>
+      <xs:documentation>
+        Single extension block appended to ANNOTATION_DOCUMENT.  All child
+        sections are optional; absent sections are treated as empty.
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+
+  <xs:complexType name="MumoDataType">
+    <xs:all>
+      <xs:element name="transcript_structure" type="mm:TranscriptStructureType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            Document-order sequence of utterance, event, and visualization
+            blocks.  Carries word-level token IDs, token timings, inline
+            marks, and ordering not otherwise representable in EAF tiers.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="images" type="mm:ImagesType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            Pool of image nodes referenced by visualization blocks via xref.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="frame_schemas" type="mm:FrameSchemasType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            CA/frame-semantic schema definitions: named frames with typed,
+            anchor-scoped slots and optional controlled-vocabulary metrics.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="frames" type="mm:FramesType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            Instantiated frames — each frame instance binds slot instances
+            (which carry metric values) to annotations.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="marks" type="mm:MarksType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            ProseMirror annotation-mark spans: character offsets within a
+            named block identify the marked text region.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="textlets" type="mm:TextletsType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            Mark-anchored inline annotations (e.g. CA symbols, codes).
+            Each textlet references an mm:mark and carries typed features.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="annotations" type="mm:AnnotationsType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            Store-only annotations not covered by EAF tiers or mm:textlets —
+            pattern slot annotations and utterance/token/time/word-range
+            anchored annotations.  Anchors are carried as mm:anchor children
+            (any number of annotations may reference the same utterance or
+            token).  Legacy files instead carry a single annotation_ref
+            back-pointer on the mm:utt / mm:t element.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="id_map" type="mm:IdMapType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            Mapping between EAF-layer identifiers and stable mumo IDs.
+            EAF ANNOTATION_IDs are sequential ("a1", "a2", …) and CV_IDs are
+            vocabulary names, so neither can carry mumo uuids directly.  The
+            parser composes this map with the EAF layer to restore original
+            mumo IDs on utterance blocks, tier annotations, and vocabularies,
+            keeping permalinks and cross-references stable across save/load.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="participants" type="mm:ParticipantsType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            Participant metadata (display label, arbitrary key/value attrs).
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="font_config" type="mm:FontConfigType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            Document-level font preferences for the transcript editor.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="symbol_defs" type="mm:SymbolDefsType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            User-defined CA/special symbols: Unicode codepoint → optional
+            keyboard shortcut and display description.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="tier_extensions" type="mm:TierExtensionsType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            MuMo-specific tier metadata not expressible in EAF TIER elements,
+            keyed by tier name.  Currently used for track visualisation links.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:all>
+    <!-- format_version is fixed at 1 for this schema revision -->
+    <xs:attribute name="format_version" type="xs:positiveInteger" use="required"/>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       transcript_structure
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="TranscriptStructureType">
+    <xs:annotation>
+      <xs:documentation>
+        Ordered sequence of document blocks.  The order attribute on each
+        child gives the canonical display order used when rendering the
+        transcript editor.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="utt"           type="mm:UttType"/>
+      <xs:element name="event"         type="mm:EventType"/>
+      <xs:element name="visualization" type="mm:VisualizationType"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <!-- Shared inline content model used inside utt, event, and visualization -->
+  <xs:complexType name="InlineMarkType">
+    <xs:annotation>
+      <xs:documentation>
+        A zero-width inline annotation point at a character offset within
+        the containing block's plain-text content.
+
+        type="overlap_bracket": bracket pair tracking overlapping speech.
+          Required: group_id (identifies the bracket pair), kind (start|end).
+
+        type="inline_ann": inline gloss or annotation point.
+          Required: id (annotation ID), value (display string).
+          Optional: viz_id (links to a visualization block).
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="type" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="overlap_bracket"/>
+          <xs:enumeration value="inline_ann"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <!-- overlap_bracket attributes -->
+    <xs:attribute name="group_id"    type="xs:string" use="optional"/>
+    <xs:attribute name="kind" use="optional">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="start"/>
+          <xs:enumeration value="end"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <!-- inline_ann attributes -->
+    <xs:attribute name="id"     type="xs:string" use="optional"/>
+    <xs:attribute name="value"  type="xs:string" use="optional"/>
+    <xs:attribute name="viz_id" type="xs:string" use="optional"/>
+    <!-- shared by all inline mark types -->
+    <xs:attribute name="char_offset" type="xs:nonNegativeInteger" use="required"/>
+  </xs:complexType>
+
+  <!--
+    mm:t — a single word-level token (timing atom).
+    type values:
+      word   — ordinary orthographic word
+      ws     — whitespace between words
+      punct  — punctuation mark
+      action — non-speech action description (e.g. ((laughs)))
+      gap    — transcription gap / pause
+  -->
+  <xs:complexType name="TokenType" mixed="true">
+    <xs:annotation>
+      <xs:documentation>
+        Word-level timing atom.  Text content is the token string.
+        start_ms / end_ms are optional; omitted when the token is untimed.
+        annotation_ref links the token to an mm:annotation entry.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="type" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="word"/>
+          <xs:enumeration value="ws"/>
+          <xs:enumeration value="punct"/>
+          <xs:enumeration value="action"/>
+          <xs:enumeration value="gap"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="id"             type="xs:string"            use="required"/>
+    <xs:attribute name="annotation_ref" type="xs:string"            use="optional"/>
+    <xs:attribute name="start_ms"       type="xs:nonNegativeInteger" use="optional"/>
+    <xs:attribute name="end_ms"         type="xs:nonNegativeInteger" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="UttType">
+    <xs:annotation>
+      <xs:documentation>
+        A speaker utterance block.  Corresponds to an ALIGNABLE_ANNOTATION
+        on a speaker:&lt;participant&gt; EAF tier.
+        annotation_ref links the utterance to an mm:annotation entry.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="t"           type="mm:TokenType"/>
+        <xs:element name="inline_mark" type="mm:InlineMarkType"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="order"          type="xs:nonNegativeInteger" use="required"/>
+    <xs:attribute name="block_id"       type="xs:string"             use="required"/>
+    <xs:attribute name="participant"    type="xs:string"             use="required"/>
+    <xs:attribute name="tier"           type="xs:string"             use="optional"/>
+    <xs:attribute name="annotation_ref" type="xs:string"             use="optional"/>
+    <xs:attribute name="start_ms"       type="xs:nonNegativeInteger" use="optional"/>
+    <xs:attribute name="end_ms"         type="xs:nonNegativeInteger" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="EventType">
+    <xs:annotation>
+      <xs:documentation>
+        A non-utterance timed event block (e.g. gesture, gaze cue).
+        Corresponds to an ALIGNABLE_ANNOTATION on an evt:&lt;participant&gt;:&lt;tier&gt; EAF tier.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="t"           type="mm:TokenType"/>
+        <xs:element name="inline_mark" type="mm:InlineMarkType"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="order"          type="xs:nonNegativeInteger" use="required"/>
+    <xs:attribute name="block_id"       type="xs:string"             use="required"/>
+    <xs:attribute name="participant"    type="xs:string"             use="required"/>
+    <xs:attribute name="tier"           type="xs:string"             use="required"/>
+    <xs:attribute name="annotation_ref" type="xs:string"             use="optional"/>
+    <xs:attribute name="start_ms"       type="xs:nonNegativeInteger" use="optional"/>
+    <xs:attribute name="end_ms"         type="xs:nonNegativeInteger" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="VisualizationType">
+    <xs:annotation>
+      <xs:documentation>
+        A multimodal visualization block (screenshot, diagram, etc.)
+        interleaved in document order with utterances and events.
+        type attribute: e.g. "screenshot".
+        dependent="true": rendered inline with the preceding block.
+        parent_block_id: block_id of the utterance/event this is attached to.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="xref"        type="mm:XrefType"/>
+        <xs:element name="inline_mark" type="mm:InlineMarkType"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="order"           type="xs:nonNegativeInteger" use="required"/>
+    <xs:attribute name="block_id"        type="xs:string"             use="required"/>
+    <xs:attribute name="type"            type="xs:string"             use="required"/>
+    <xs:attribute name="label"           type="xs:string"             use="required"/>
+    <xs:attribute name="participant"     type="xs:string"             use="optional"/>
+    <xs:attribute name="tier"            type="xs:string"             use="optional"/>
+    <xs:attribute name="dependent"       type="xs:boolean"            use="optional"/>
+    <xs:attribute name="parent_block_id" type="xs:string"             use="optional"/>
+    <xs:attribute name="start_ms"        type="xs:nonNegativeInteger" use="optional"/>
+    <xs:attribute name="end_ms"          type="xs:nonNegativeInteger" use="optional"/>
+  </xs:complexType>
+
+  <!--
+    mm:xref — reference to an image node from the mm:images pool.
+    Positioned at char_offset within the visualization block's text content.
+  -->
+  <xs:complexType name="XrefType">
+    <xs:attribute name="image_id"    type="xs:string"             use="required"/>
+    <xs:attribute name="char_offset" type="xs:nonNegativeInteger" use="required"/>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       images
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="ImagesType">
+    <xs:sequence>
+      <xs:element name="image" type="mm:ImageType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ImageType">
+    <xs:annotation>
+      <xs:documentation>
+        An image node.  Referenced from visualization blocks via mm:xref.
+        width: display width in pixels (default 150).
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="provenance" type="mm:ProvenanceType" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="id"    type="xs:string"          use="required"/>
+    <xs:attribute name="label" type="xs:string"          use="optional"/>
+    <xs:attribute name="width" type="xs:positiveInteger" use="optional" default="150"/>
+  </xs:complexType>
+
+  <xs:complexType name="ProvenanceType">
+    <xs:annotation>
+      <xs:documentation>
+        Records how the image was acquired.
+
+        kind="screenshot": captured from a video frame.
+          media_path: relative path to the source video.
+          media_time_ms: capture timestamp in milliseconds.
+
+        kind="upload": supplied by the user as a file.
+          filename: original filename.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="kind" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="screenshot"/>
+          <xs:enumeration value="upload"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <!-- screenshot-specific -->
+    <xs:attribute name="media_path"    type="xs:string"             use="optional"/>
+    <xs:attribute name="media_time_ms" type="xs:nonNegativeInteger" use="optional"/>
+    <!-- upload-specific -->
+    <xs:attribute name="filename"      type="xs:string"             use="optional"/>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       frame_schemas
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="FrameSchemasType">
+    <xs:sequence>
+      <xs:element name="frame_schema" type="mm:FrameSchemaType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="FrameSchemaType">
+    <xs:annotation>
+      <xs:documentation>
+        A named frame schema (CA construction, interaction unit, etc.).
+        color: packed ARGB integer for UI display.
+        hotkey: single-key shortcut to insert this frame type.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="slot" type="mm:SlotSchemaType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id"          type="xs:string"  use="required"/>
+    <xs:attribute name="name"        type="xs:string"  use="required"/>
+    <xs:attribute name="description" type="xs:string"  use="optional"/>
+    <xs:attribute name="color"       type="xs:integer" use="optional"/>
+    <xs:attribute name="hotkey"      type="xs:string"  use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="SlotSchemaType">
+    <xs:annotation>
+      <xs:documentation>
+        A typed slot within a frame schema.
+
+        anchor_kind specifies what can be annotated by this slot:
+          span       — a character span (marked text region)
+          utterance  — a whole utterance block
+          frame      — another frame instance
+          any        — unconstrained
+
+        required="true": slot must be filled in any frame instance.
+        variadic="true": slot may have multiple instances in one frame.
+        label: short display label (overrides name in compact views).
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="style"  type="mm:SlotStyleType"   minOccurs="0"/>
+      <xs:element name="metric" type="mm:MetricSchemaType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id"          type="xs:string"  use="required"/>
+    <xs:attribute name="name"        type="xs:string"  use="required"/>
+    <xs:attribute name="anchor_kind" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="span"/>
+          <xs:enumeration value="utterance"/>
+          <xs:enumeration value="frame"/>
+          <xs:enumeration value="any"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="required" type="xs:boolean" use="optional"/>
+    <xs:attribute name="variadic" type="xs:boolean" use="optional"/>
+    <xs:attribute name="label"    type="xs:string"  use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="SlotStyleType">
+    <xs:annotation>
+      <xs:documentation>
+        Visual style applied to annotated text when this slot is filled.
+        Colors are CSS color strings (e.g. "#ff0000", "rgb(255,0,0)").
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="text_color"       type="xs:string"  use="optional"/>
+    <xs:attribute name="background_color" type="xs:string"  use="optional"/>
+    <xs:attribute name="border_color"     type="xs:string"  use="optional"/>
+    <xs:attribute name="bold"             type="xs:boolean" use="optional"/>
+    <xs:attribute name="italic"           type="xs:boolean" use="optional"/>
+    <xs:attribute name="underline"        type="xs:boolean" use="optional"/>
+    <xs:attribute name="strikethrough"    type="xs:boolean" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="MetricSchemaType">
+    <xs:annotation>
+      <xs:documentation>
+        A typed data field associated with a slot.
+
+        type values:
+          text        — free-text string
+          boolean     — true/false flag
+          categorical — value must come from the referenced vocabulary
+          participant — value is a participant ID
+
+        vocabulary_id: references a CONTROLLED_VOCABULARY CV_ID (EAF part)
+          for categorical metrics.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="id"           type="xs:string" use="required"/>
+    <xs:attribute name="name"         type="xs:string" use="required"/>
+    <xs:attribute name="type" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="text"/>
+          <xs:enumeration value="boolean"/>
+          <xs:enumeration value="categorical"/>
+          <xs:enumeration value="participant"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="vocabulary_id" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       frames
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="FramesType">
+    <xs:sequence>
+      <xs:element name="frame" type="mm:FrameType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="FrameType">
+    <xs:annotation>
+      <xs:documentation>
+        An instantiated frame.
+        schema_id references an mm:frame_schema id.
+        note: free-text annotation note on the frame instance.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="slot_instance" type="mm:SlotInstanceType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id"        type="xs:string" use="required"/>
+    <xs:attribute name="schema_id" type="xs:string" use="required"/>
+    <xs:attribute name="note"      type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="SlotInstanceType">
+    <xs:annotation>
+      <xs:documentation>
+        A filled slot within a frame instance.
+        schema_slot_id references a slot id within the parent frame's schema.
+        annotation_id references the annotation that occupies this slot.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="metric_value" type="mm:MetricValueType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id"             type="xs:string" use="required"/>
+    <xs:attribute name="schema_slot_id" type="xs:string" use="required"/>
+    <xs:attribute name="annotation_id"  type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="MetricValueType">
+    <xs:annotation>
+      <xs:documentation>
+        A recorded metric value for a slot instance.
+        schema_id references the metric schema id within the slot schema.
+        value: always serialized as a string; parse according to metric type.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="schema_id" type="xs:string" use="required"/>
+    <xs:attribute name="value"     type="xs:string" use="required"/>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       marks
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="MarksType">
+    <xs:sequence>
+      <xs:element name="mark" type="mm:MarkType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MarkType">
+    <xs:annotation>
+      <xs:documentation>
+        A ProseMirror annotation mark: a character range [start, end) within
+        the plain-text content of the named block.
+        block_id references the block_id of an mm:utt, mm:event, or mm:visualization.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="id"       type="xs:string"             use="required"/>
+    <xs:attribute name="block_id" type="xs:string"             use="required"/>
+    <xs:attribute name="start"    type="xs:nonNegativeInteger" use="required"/>
+    <xs:attribute name="end"      type="xs:nonNegativeInteger" use="required"/>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       textlets
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="TextletsType">
+    <xs:sequence>
+      <xs:element name="textlet" type="mm:TextletType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TextletType">
+    <xs:annotation>
+      <xs:documentation>
+        An annotation anchored to an mm:mark span.  Carries typed features:
+          note  — free-text note
+          codes — list of controlled-vocabulary codes (the primary payload
+                  for CA symbol annotations)
+          feature — arbitrary name=value pairs for additional properties
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="note"    type="xs:string"      minOccurs="0"/>
+      <xs:element name="codes"   type="mm:CodesType"   minOccurs="0"/>
+      <xs:element name="feature" type="mm:FeatureType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id"      type="xs:string" use="required"/>
+    <xs:attribute name="mark_id" type="xs:string" use="required"/>
+    <xs:attribute name="type"    type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="CodesType">
+    <xs:sequence>
+      <xs:element name="code" type="mm:CodeType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="CodeType" mixed="true">
+    <xs:annotation>
+      <xs:documentation>
+        A single code value.  Text content is the display/storage string.
+        vocab_entry_id + vocab_id link to an EAF CV_ENTRY_ML entry for
+        controlled-vocabulary codes.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="vocab_entry_id" type="xs:string" use="optional"/>
+    <xs:attribute name="vocab_id"       type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="FeatureType" mixed="true">
+    <xs:annotation>
+      <xs:documentation>
+        A generic named property.  Text content is the value.  value_type
+        declares how to decode it: absent = string, "number", "boolean",
+        or "json" (text is a JSON-encoded structure).
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="name" type="xs:string" use="required"/>
+    <xs:attribute name="value_type">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="number"/>
+          <xs:enumeration value="boolean"/>
+          <xs:enumeration value="json"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       annotations
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="AnnotationsType">
+    <xs:sequence>
+      <xs:element name="annotation" type="mm:MumoAnnotationType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MumoAnnotationType">
+    <xs:annotation>
+      <xs:documentation>
+        A store-only annotation (pattern slot annotation, or one anchored to an
+        utterance / token / time span / word range).  Anchors are mm:anchor
+        children; annotations with feature-only references (e.g. utteranceId,
+        tokenId, patternId features) have no anchor children.  Legacy files
+        establish the anchor via annotation_ref on mm:utt / mm:t instead.
+        Self-closing when no anchors or features are present.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="anchor"  type="mm:AnchorType"  minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="feature" type="mm:FeatureType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id"   type="xs:string" use="required"/>
+    <xs:attribute name="type" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="AnchorType">
+    <xs:annotation>
+      <xs:documentation>
+        One annotation anchor.  type selects which attributes apply:
+        utterance → utt_id; token → token_id; time → start_ms + end_ms;
+        word_range → from_word_id + to_word_id.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="type" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="utterance"/>
+          <xs:enumeration value="token"/>
+          <xs:enumeration value="time"/>
+          <xs:enumeration value="word_range"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="utt_id"       type="xs:string"/>
+    <xs:attribute name="token_id"     type="xs:string"/>
+    <xs:attribute name="start_ms"     type="xs:nonNegativeInteger"/>
+    <xs:attribute name="end_ms"       type="xs:nonNegativeInteger"/>
+    <xs:attribute name="from_word_id" type="xs:string"/>
+    <xs:attribute name="to_word_id"   type="xs:string"/>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       id_map
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="IdMapType">
+    <xs:sequence>
+      <xs:element name="id" minOccurs="0" maxOccurs="unbounded">
+        <xs:annotation>
+          <xs:documentation>
+            eaf: an EAF ANNOTATION_ID in this document.
+            id:  the stable mumo ID of the corresponding utterance block or
+                 store annotation.
+          </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+          <xs:attribute name="eaf" type="xs:string" use="required"/>
+          <xs:attribute name="id"  type="xs:string" use="required"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="vocab_id" minOccurs="0" maxOccurs="unbounded">
+        <xs:annotation>
+          <xs:documentation>
+            eaf: an EAF CV_ID (the vocabulary name).
+            id:  the stable mumo uuid of the vocabulary, as referenced by
+                 pattern metric vocabularyId and linguistic types.
+          </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+          <xs:attribute name="eaf" type="xs:string" use="required"/>
+          <xs:attribute name="id"  type="xs:string" use="required"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       participants
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="ParticipantsType">
+    <xs:sequence>
+      <xs:element name="participant" type="mm:ParticipantType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ParticipantType">
+    <xs:annotation>
+      <xs:documentation>
+        A conversation participant.
+        id: stable internal identifier used in utterance/event participant attributes.
+        label: human-readable display name.
+        mm:attr children carry arbitrary key/value metadata (e.g. role, age, L1).
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="attr" type="mm:AttrType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id"    type="xs:string" use="required"/>
+    <xs:attribute name="label" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="AttrType" mixed="true">
+    <xs:annotation>
+      <xs:documentation>
+        A named metadata attribute.  Text content is the value string.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="name" type="xs:string" use="required"/>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       font_config
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="FontConfigType">
+    <xs:annotation>
+      <xs:documentation>
+        Document-level font preferences.
+        transcript_font: CSS font-family string for the transcript editor.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="transcript_font" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       symbol_defs
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="SymbolDefsType">
+    <xs:sequence>
+      <xs:element name="symbol_def" type="mm:SymbolDefType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="SymbolDefType">
+    <xs:annotation>
+      <xs:documentation>
+        A user-defined CA or special symbol.
+        unicode: the Unicode character(s) representing the symbol.
+        shortcut: optional single-key or chord shortcut to insert it.
+        description: human-readable explanation shown in the symbol picker.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="unicode"     type="xs:string" use="required"/>
+    <xs:attribute name="shortcut"    type="xs:string" use="optional"/>
+    <xs:attribute name="description" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       tier_extensions
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="TierExtensionsType">
+    <xs:sequence>
+      <xs:element name="tier_ext" type="mm:TierExtType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TierExtType">
+    <xs:annotation>
+      <xs:documentation>
+        MuMo-specific extensions for a named EAF tier.
+        tier_key: matches the TIER_ID or tier name in the EAF TIER elements.
+        track_set_id + track_id: link the tier lane to a video-derived
+          detection track for visualization (e.g. pose, bounding box).
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="tier_key"     type="xs:string" use="required"/>
+    <xs:attribute name="track_set_id" type="xs:string" use="optional"/>
+    <xs:attribute name="track_id"     type="xs:string" use="optional"/>
+  </xs:complexType>
+
+</xs:schema>

@@ -1,0 +1,44 @@
+{
+  "name": "@mumo/desktop",
+  "version": "0.0.1",
+  "description": "Multimodal interaction analysis tool",
+  "homepage": "https://openmumo.org",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jackft/mumo"
+  },
+  "author": {
+    "name": "Jack Terwilliger",
+    "email": "jack.f.terwilliger@gmail.com"
+  },
+  "private": true,
+  "desktopName": "mumo.desktop",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "pack": "electron-vite build && pnpm run rebuild-native && electron-builder --config electron-builder.config.cjs --dir",
+    "dist": "electron-vite build && pnpm run rebuild-native && electron-builder --config electron-builder.config.cjs",
+    "rebuild-native": "cross-env JOBS=1 electron-rebuild -f -w better-sqlite3",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.1.0",
+    "@mumo/core": "workspace:*",
+    "@mumo/media-player": "workspace:*",
+    "@mumo/serialization": "workspace:*",
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "cross-env": "^10.1.0",
+    "electron": "43.0.0",
+    "electron-builder": "26.15.3",
+    "electron-vite": "^5.0.0",
+    "svelte": "^5.56.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.2",
+    "vite-plugin-wasm": "^3.6.0"
+  }
+}

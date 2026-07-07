@@ -1,0 +1,18 @@
+{
+  "name": "audio-analysis-wasm",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./pkg/audio_analysis_wasm.js",
+  "types": "./pkg/audio_analysis_wasm.d.ts",
+  "files": [
+    "pkg/audio_analysis_wasm_bg.wasm",
+    "pkg/audio_analysis_wasm.js",
+    "pkg/audio_analysis_wasm.d.ts"
+  ],
+  "sideEffects": [
+    "./pkg/snippets/*"
+  ],
+  "scripts": {
+    "build": "wasm-pack build --target bundler --out-dir pkg"
+  }
+}

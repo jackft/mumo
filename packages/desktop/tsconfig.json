@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"],
+    "paths": {
+      "@mumo/*": ["../mumo/src/*"]
+    }
+  },
+  "include": ["src", "electron.vite.config.ts"]
+}
