@@ -262,4 +262,25 @@ describe('media descriptor', () => {
     const xml = emitEAF(emptyDoc(), new AnnotationStore())
     expect(xml).not.toContain('<MEDIA_DESCRIPTOR')
   })
+
+  it('includes additionalMedia descriptors', () => {
+    const xml = emitEAF(emptyDoc(), new AnnotationStore(), {
+      mediaUrl: 'file:///primary.mp4',
+      additionalMedia: [
+        { mediaUrl: 'file:///secondary.wav', mimeType: 'audio/x-wav', timeOrigin: 500 },
+      ],
+    })
+    expect(xml).toContain('MEDIA_URL="file:///primary.mp4"')
+    expect(xml).toContain('MEDIA_URL="file:///secondary.wav"')
+    expect(xml).toContain('MIME_TYPE="audio/x-wav"')
+    expect(xml).toContain('TIME_ORIGIN="500"')
+  })
+
+  it('omits TIME_ORIGIN when timeOrigin is zero', () => {
+    const xml = emitEAF(emptyDoc(), new AnnotationStore(), {
+      mediaUrl: 'file:///video.mp4',
+      timeOrigin: 0,
+    })
+    expect(xml).not.toContain('TIME_ORIGIN')
+  })
 })

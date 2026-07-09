@@ -18,6 +18,7 @@ export type { SignalCallbacks } from './SignalBroker.js'
 export { default as MediaPlayerView } from './MediaPlayerView.svelte'
 export { default as VideoTileLayout } from './VideoTileLayout.svelte'
 export { default as LinkedMediaDlg } from './LinkedMediaDlg.svelte'
+export type { MediaEntry } from './linked-media-types.js'
 
 export { VideoRenderer } from './VideoRenderer.js'
 export { PlayerController } from './PlayerController.js'

@@ -1,18 +1,20 @@
 <script lang="ts">
-  import type { MediaPlayer } from './MediaPlayer.js'
+  import type { MediaEntry } from './linked-media-types.js'
 
   const {
     open,
-    players,
+    entries,
     onClose,
     onLink,
+    onLoad,
     onRemove,
     onOffsetChange,
   }: {
     open: boolean
-    players: readonly MediaPlayer[]
+    entries: MediaEntry[]
     onClose: () => void
     onLink: () => void
+    onLoad: (id: string) => void
     onRemove: (id: string) => void
     onOffsetChange: (id: string, offsetSec: number) => void
   } = $props()
@@ -27,26 +29,28 @@
     </div>
 
     <div class="lmd-body">
-      {#if players.length === 0}
+      {#if entries.length === 0}
         <p class="lmd-empty">No media linked.</p>
       {:else}
-        {#each players as player, i (player.id)}
-          <div class="lmd-row">
-            <span class="lmd-name" title={player.state?.filename ?? ''}>{player.state?.filename ?? '(loading…)'}</span>
-            {#if i > 0}
-              <label class="lmd-offset-label">
-                Offset (s)
-                <input class="lmd-offset" type="number" step="0.01"
-                  value={player.track?.offsetSec ?? 0}
-                  oninput={(e) => onOffsetChange(player.id, parseFloat((e.currentTarget as HTMLInputElement).value) || 0)}
-                />
-              </label>
-              <button class="lmd-remove" onclick={() => onRemove(player.id)}>Remove</button>
-            {:else}
-              <span class="lmd-primary-badge">primary</span>
-            {/if}
-          </div>
-        {/each}
+        <div class="lmd-grid">
+          {#each entries as entry (entry.id)}
+            <span class="lmd-name" class:lmd-name-unloaded={entry.kind === 'unloaded'} title={entry.id}>{entry.name}</span>
+            <span class="lmd-status">{entry.kind === 'unloaded' ? 'not loaded' : ''}</span>
+            <label class="lmd-offset-label">
+              Offset (s)
+              <input class="lmd-offset" type="number" step="0.01"
+                value={entry.offsetSec}
+                oninput={(e) => onOffsetChange(entry.id, parseFloat((e.currentTarget as HTMLInputElement).value) || 0)}
+              />
+            </label>
+            <div class="lmd-actions">
+              {#if entry.kind === 'unloaded'}
+                <button class="lmd-load" onclick={() => onLoad(entry.id)}>Load</button>
+              {/if}
+              <button class="lmd-remove" onclick={() => onRemove(entry.id)}>Remove</button>
+            </div>
+          {/each}
+        </div>
       {/if}
     </div>
 
@@ -64,10 +68,9 @@
   .lmd-panel {
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
     background: #fff; border: 1px solid #d0d0d0; border-radius: 6px;
-    min-width: 340px; max-width: 500px; z-index: 201;
+    min-width: 420px; max-width: 580px; z-index: 201;
     box-shadow: 0 4px 24px rgba(0,0,0,.12);
-    color: #222;
-    font-size: 13px;
+    color: #222; font-size: 13px;
   }
   .lmd-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -77,29 +80,51 @@
     background: none; border: none; cursor: pointer; opacity: 0.45; font-size: 14px; color: #222;
   }
   .lmd-close:hover { opacity: 0.9; }
-  .lmd-body { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .lmd-body { padding: 10px 14px; }
   .lmd-empty { opacity: 0.5; font-size: 13px; margin: 0; }
-  .lmd-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-  .lmd-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #333; }
-  .lmd-primary-badge {
-    font-size: 11px; color: #777; padding: 1px 6px;
-    border: 1px solid #ccc; border-radius: 10px;
+
+  .lmd-grid {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 8px;
   }
-  .lmd-offset-label { display: flex; align-items: center; gap: 4px; white-space: nowrap; color: #555; }
+  .lmd-name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #333; font-size: 12px; min-width: 0;
+  }
+  .lmd-name-unloaded { color: #888; font-style: italic; }
+  .lmd-status {
+    font-size: 10px; color: #999; white-space: nowrap;
+    border: 1px solid transparent; border-radius: 8px; padding: 1px 5px;
+  }
+  .lmd-status:not(:empty) { border-color: #ddd; }
+  .lmd-offset-label {
+    display: flex; align-items: center; gap: 4px;
+    white-space: nowrap; color: #555; font-size: 12px;
+  }
   .lmd-offset {
-    width: 70px; font-size: 12px; background: #fff;
+    width: 62px; font-size: 12px; background: #fff;
     border: 1px solid #ccc; border-radius: 3px; padding: 2px 4px; color: #222;
   }
+  .lmd-actions {
+    display: flex; gap: 4px; justify-content: flex-end;
+  }
+  .lmd-load {
+    background: none; border: 1px solid #1565c0; border-radius: 3px;
+    color: #1565c0; cursor: pointer; padding: 2px 8px; font-size: 11px; white-space: nowrap;
+  }
+  .lmd-load:hover { background: #e3f2fd; }
   .lmd-remove {
     background: none; border: 1px solid #e57373; border-radius: 3px;
-    color: #c62828; cursor: pointer; padding: 2px 8px; font-size: 11px;
+    color: #c62828; cursor: pointer; padding: 2px 8px; font-size: 11px; white-space: nowrap;
   }
   .lmd-remove:hover { background: #c62828; color: #fff; }
   .lmd-footer { padding: 10px 14px; border-top: 1px solid #eee; }
   .lmd-link-btn {
     background: none; border: 1px solid #1565c0; border-radius: 4px;
-    padding: 5px 14px; cursor: pointer; font-size: 12px; width: 100%;
-    color: #1565c0;
+    padding: 5px 14px; cursor: pointer; font-size: 12px; width: 100%; color: #1565c0;
   }
   .lmd-link-btn:hover { background: #e3f2fd; }
 </style>
