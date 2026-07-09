@@ -10,7 +10,7 @@
   import type { DocumentJSON, ImageProvenance, PMNode, TrackSet, ControllerMeta, SymbolDef } from '@mumo/core'
   import { CollabManager } from './collab.js'
   import type { CollabMode, CollabStatus, CollabIdentity, AwarenessLike, PeerPatternSel } from './collab.js'
-  import { parseXML, eafTomumo, emitEAF, emitETF, parseMMEAF, parseMMETF, emitMMEAF, emitMMETF, emitVTT, emitTXT, emitCSV, packMumo, unpackMumo } from '@mumo/serialization'
+  import { parseXML, eafTomumo, emitEAF, emitETF, parseETF, parseMMEAF, parseMMETF, emitMMEAF, emitMMETF, emitVTT, emitTXT, emitCSV, packMumo, unpackMumo } from '@mumo/serialization'
   import { MediaResolver } from './media-resolver.js'
   import type { MediaResolveResult } from './media-resolver.js'
   import appIconUrl from './assets/mumo.svg'
@@ -61,6 +61,8 @@
   import PreferencesDlg from './dialogs/PreferencesDlg.svelte'
   import EditAnnPopover from './dialogs/EditAnnPopover.svelte'
   import EafImportDlg from './dialogs/EafImportDlg.svelte'
+  import ApplyTemplateDlg from './dialogs/ApplyTemplateDlg.svelte'
+  import { buildTemplateMerge } from './template-merge.js'
   import EditUttTierDlg from './dialogs/EditUttTierDlg.svelte'
   import EditTierDlg from './dialogs/EditTierDlg.svelte'
   import UttTiersDlg from './dialogs/UttTiersDlg.svelte'
@@ -4307,6 +4309,25 @@ let patternSchemaDlgOpen = $state(false)
     if (filecontroller.currentFormat === 'eaf') saveETF()
     else saveMMETF()
   }
+
+  let applyTemplateDlgOpen = $state(false)
+  let applyTemplateDlgData = $state<ReturnType<typeof buildTemplateMerge> | null>(null)
+
+  async function applyTemplate() {
+    const file = await platform.openBinaryFile(['mmetf', 'etf'], 'Template files')
+    if (!file) return
+    const text = await file.file.text()
+    const ext = (file.path ?? file.file.name).split('.').pop()?.toLowerCase()
+    let tmpl: Parameters<typeof buildTemplateMerge>[0]
+    try {
+      tmpl = ext === 'mmetf' ? parseMMETF(text) : parseETF(text)
+    } catch {
+      alert('Could not parse template file.')
+      return
+    }
+    applyTemplateDlgData = buildTemplateMerge(tmpl, store)
+    applyTemplateDlgOpen = true
+  }
 </script>
 
 <!-- Editor pane context menu -->
@@ -4626,6 +4647,15 @@ let patternSchemaDlgOpen = $state(false)
   />
 {/if}
 
+{#if applyTemplateDlgOpen && applyTemplateDlgData}
+  <ApplyTemplateDlg
+    conflicts={applyTemplateDlgData.conflicts}
+    preview={applyTemplateDlgData.preview}
+    onconfirm={() => applyTemplateDlgData!.applyFn(store)}
+    onclose={() => { applyTemplateDlgOpen = false }}
+  />
+{/if}
+
 {#if eafImportDlg.open && eafImportDlg.eaf}
   <EafImportDlg
     eaf={eafImportDlg.eaf}
@@ -4861,6 +4891,7 @@ let patternSchemaDlgOpen = $state(false)
               <button onclick={() => { openMenu = null; saveMMETF() }}>Save MMETF</button>
             </div>
           </div>
+          <button onclick={() => { openMenu = null; void applyTemplate() }}>Apply template…</button>
           <hr class="mb-sep" />
           <button onclick={() => { openMenu = null; setLanguage() }}>Language: {documentLanguage}</button>
           <hr class="mb-sep" />
