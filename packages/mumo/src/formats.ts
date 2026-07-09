@@ -27,7 +27,13 @@ export type ImportResult = {
 export type ExportOpts = {
   language?: string
   mediaUrl?: string
+  mimeType?: string
+  mediaHash?: string
   timeOriginMs?: number
+  /** Additional media descriptors beyond the primary. */
+  additionalMedia?: Array<{ mediaUrl: string; mimeType?: string; mediaHash?: string; timeOriginMs?: number }>
+  /** Passthrough PROPERTY elements from an original EAF header (mumo:mediaHash:* excluded — regenerated). */
+  headerProperties?: Array<{ name: string; value: string }>
   /** Emit word-level token tiers (tokens:<participant>) in EAF export. */
   includeTokenTiers?: boolean
 }

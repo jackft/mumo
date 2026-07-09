@@ -10,7 +10,7 @@
   import type { DocumentJSON, ImageProvenance, PMNode, TrackSet, ControllerMeta, SymbolDef } from '@mumo/core'
   import { CollabManager } from './collab.js'
   import type { CollabMode, CollabStatus, CollabIdentity, AwarenessLike, PeerPatternSel } from './collab.js'
-  import { parseXML, eafTomumo, emitEAF, emitETF, parseMMEAF, parseMMETF, emitMMEAF, emitMMETF, emitVTT, emitTXT, emitCSV, packMumo, unpackMumo } from '@mumo/serialization'
+  import { parseXML, eafTomumo, emitEAF, emitETF, parseETF, parseMMEAF, parseMMETF, emitMMEAF, emitMMETF, emitVTT, emitTXT, emitCSV, packMumo, unpackMumo } from '@mumo/serialization'
   import { MediaResolver } from './media-resolver.js'
   import type { MediaResolveResult } from './media-resolver.js'
   import appIconUrl from './assets/mumo.svg'
@@ -31,7 +31,6 @@
   import type { VizOptions } from '@mumo/media-player'
   
   import { applyInsertionHeuristic, healPromotedBlock, updateChildAnnotations, timeAnchor, formatGapDuration } from './docOps.js'
-  import { seedBuiltins } from './builtins.js'
 
   import type { EmbedConfig } from './embed.js'
   import { defaultBindings, mergeBindings, normalizeKeyEvent } from './keybindings.js'
@@ -62,6 +61,8 @@
   import PreferencesDlg from './dialogs/PreferencesDlg.svelte'
   import EditAnnPopover from './dialogs/EditAnnPopover.svelte'
   import EafImportDlg from './dialogs/EafImportDlg.svelte'
+  import ApplyTemplateDlg from './dialogs/ApplyTemplateDlg.svelte'
+  import { buildTemplateMerge } from './template-merge.js'
   import EditUttTierDlg from './dialogs/EditUttTierDlg.svelte'
   import EditTierDlg from './dialogs/EditTierDlg.svelte'
   import UttTiersDlg from './dialogs/UttTiersDlg.svelte'
@@ -123,8 +124,6 @@
     initYXmlFragment(ydoc, initialDoc)
     if (_initEmbedDoc) {
       store.loadJSON(_initEmbedDoc)
-    } else {
-      seedBuiltins(store)
     }
   }
   const undoManager = new Y.UndoManager(
@@ -1077,13 +1076,13 @@
       switch (action) {
         case 'file:new':               newDoc(); break
         case 'file:open':              void openAny(); break
-        case 'file:save':              void (fc.currentFilename ? saveMumo() : saveMumoAs()); break
+        case 'file:save':              void (filecontroller.currentFilename ? saveMumo() : saveMumoAs()); break
         case 'file:openTemplate':      void openTemplate(); break
         case 'file:saveTemplate':      saveTemplate(); break
         case 'file:setLanguage':       setLanguage(); break
         case 'tracks:importCOCO':      void importTracksCoco(); break
         case 'tracks:importMOT':       void importTracksMot(); break
-        case 'media:loadMedia':        openMediaPicker(); break
+        case 'media:loadMedia':        linkedMediaOpen = true; break
         case 'media:linkMedia':        linkedMediaOpen = true; break
         case 'edit:insertVisualization': insertVisualizationBlock(); break
         case 'selection:createTextlet': createTextletFromSelection(); break
@@ -1207,6 +1206,52 @@
   let hiddenLaneIds    = $state<Set<string>>(new Set())
   let linkedMediaOpen  = $state(false)
   let linkedPlayers    = $state<readonly MediaPlayer[]>([])
+
+  type EafPassthrough = {
+    media: import('@mumo/serialization').EAFMediaDescriptor[]
+    properties: Array<{ name: string; value: string }>
+  }
+  let eafPassthrough     = $state<EafPassthrough | null>(null)
+  // Maps desc.mediaUrl → player.id for files loaded via the Load button (works without path matching)
+  let eafSlotAssignments = $state(new Map<string, string>())
+
+  const mediaEntries = $derived((() => {
+    type E = import('@mumo/media-player').MediaEntry
+    const loaded: E[] = linkedPlayers.map(p => ({
+      kind: 'loaded' as const,
+      id: p.id,
+      name: p.state?.filename ?? '(loading…)',
+      offsetSec: p.track?.offsetSec ?? 0,
+    }))
+
+    if (!eafPassthrough) return loaded
+
+    const loadedPaths  = new Set(linkedPlayers.map(p => p.track?.path).filter(Boolean) as string[])
+    const loadedHashes = new Set(linkedPlayers.map(p => p.track?.mediaHash).filter(Boolean) as string[])
+    const storedHashByIndex = new Map<number, string>()
+    for (const prop of eafPassthrough.properties) {
+      const m = prop.name.match(/^mumo:mediaHash:(\d+)$/)
+      if (m) storedHashByIndex.set(parseInt(m[1]!), prop.value)
+    }
+    const loadedPlayerIds = new Set(linkedPlayers.map(p => p.id))
+    const unloaded: E[] = eafPassthrough.media
+      .filter((desc, i) => {
+        const assignedId = eafSlotAssignments.get(desc.mediaUrl)
+        if (assignedId && loadedPlayerIds.has(assignedId)) return false
+        if (loadedPaths.has(desc.mediaUrl)) return false
+        const h = storedHashByIndex.get(i)
+        if (h && loadedHashes.has(h)) return false
+        return true
+      })
+      .map(desc => ({
+        kind: 'unloaded' as const,
+        id: desc.mediaUrl,
+        name: desc.mediaUrl.split(/[/\\]/).pop() ?? desc.mediaUrl,
+        offsetSec: (desc.timeOrigin ?? 0) / 1000,
+      }))
+
+    return [...loaded, ...unloaded]
+  })())
   let _knownPlayerIds  = new Set<string>()
 
   function sortSignals(a: SignalChannel, b: SignalChannel): number {
@@ -1268,7 +1313,7 @@
         const chLabel = spectrogramSettings.monoMix || n === 1 ? 'wav mono' : ch === 0 ? 'wav L' : ch === 1 ? 'wav R' : `wav ch${ch}`
         const label = isPrimary ? chLabel : `${player?.state?.filename ?? ''} ${chLabel}`
         const id = `${playerId}:waveform:ch${ch}`
-        const timeOffset = isPrimary ? 0 : (player?.track?.offsetSec ?? 0)
+        const timeOffset = player?.track?.offsetSec ?? 0
         mediaSignals = [
           ...mediaSignals.filter(s => s.id !== id),
           { id, label, kind: 'waveform' as const, waveformBins: bins, height: 20, timeOffset },
@@ -1282,7 +1327,7 @@
         const chLabel = spectrogramSettings.monoMix || n === 1 ? 'mono' : ch === 0 ? 'L' : ch === 1 ? 'R' : `ch${ch}`
         const label = isPrimary ? `spec ${chLabel}` : `${player?.state?.filename ?? ''} spec ${chLabel}`
         const id = `${playerId}:spectrogram:ch${ch}`
-        const timeOffset = isPrimary ? 0 : (player?.track?.offsetSec ?? 0)
+        const timeOffset = player?.track?.offsetSec ?? 0
         if (!mediaSignals.find(s => s.id === id)) {
           mediaSignals = [
             ...mediaSignals,
@@ -1358,14 +1403,14 @@
     }
   }
 
-  async function openMediaPicker() {
+  async function _openMediaPicker() {
     const result = await platform.openBinaryFile(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'], 'Media files')
     if (result) await loadMediaFile(result.file, result.path)
   }
 
-  async function linkMediaFile() {
+  async function linkMediaFile(offsetSec = 0) {
     const result = await platform.openBinaryFile(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'], 'Media files')
-    if (result) await multiPlayer.addTrack(result.file, result.path)
+    if (result) await multiPlayer.addTrack(result.file, result.path, offsetSec)
   }
 
   const SPEED_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 5]
@@ -2117,8 +2162,10 @@ let patternSchemaDlgOpen = $state(false)
     imageRegistry.clear()
     store.loadJSON({ annotations: [] })
     transcriptFont = store.getTranscriptFont()
-    fc.currentFilename = null
-    fc.currentFormat = null
+    filecontroller.currentFilename = null
+    filecontroller.currentFormat = null
+    eafPassthrough = null
+    eafSlotAssignments = new Map()
     _applyNewDoc(createEmptyDoc())
   }
 
@@ -2134,7 +2181,7 @@ let patternSchemaDlgOpen = $state(false)
   let _lastDocNodeCount = initialDoc.childCount
   const mediaResolver = new MediaResolver()
 
-  const fc = new FileController(untrack(() => platform), {
+  const filecontroller = new FileController(untrack(() => platform), {
     onImported(result: ImportResult, _filename: string, _formatId: string) {
       const newDoc = schema.nodeFromJSON(result.docJSON)
       store.loadJSON(result.storeData)
@@ -2245,7 +2292,7 @@ let patternSchemaDlgOpen = $state(false)
     }
   }
 
-  fc
+  filecontroller
     .registerImporter({
       id: 'mmeaf', label: 'MMEAF', extensions: ['mmeaf'],
       import(text) {
@@ -2270,8 +2317,22 @@ let patternSchemaDlgOpen = $state(false)
     })
     .registerExporter({
       id: 'mmeaf', label: 'MMEAF', extension: 'mmeaf',
-      export({ docJSON, store: s, tokenStore: ts }) {
-        return emitMMEAF(docJSON as never, s, {}, ts)
+      export({ docJSON, store: s, tokenStore: ts, opts }) {
+        return emitMMEAF(docJSON as never, s, {
+          ...(opts?.language !== undefined ? { language: opts.language } : {}),
+          ...(opts?.mediaUrl !== undefined ? { mediaUrl: opts.mediaUrl } : {}),
+          ...(opts?.mimeType ? { mimeType: opts.mimeType } : {}),
+          ...(opts?.mediaHash ? { mediaHash: opts.mediaHash } : {}),
+          ...(opts?.timeOriginMs !== undefined ? { timeOrigin: opts.timeOriginMs } : {}),
+          ...(ts ? { tokenStore: ts } : {}),
+          ...(opts?.includeTokenTiers && ts ? { includeWords: true } : {}),
+          ...(opts?.additionalMedia?.length ? { additionalMedia: opts.additionalMedia.map(m => ({
+            mediaUrl: m.mediaUrl,
+            ...(m.mimeType ? { mimeType: m.mimeType } : {}),
+            ...(m.mediaHash ? { mediaHash: m.mediaHash } : {}),
+            ...(m.timeOriginMs !== undefined ? { timeOrigin: m.timeOriginMs } : {}),
+          })) } : {}),
+        }, ts)
       },
     })
     .registerExporter({
@@ -2284,9 +2345,18 @@ let patternSchemaDlgOpen = $state(false)
         return emitEAF(docJSON as never, s, {
           ...(opts?.language !== undefined ? { language: opts.language } : {}),
           ...(opts?.mediaUrl !== undefined ? { mediaUrl: opts.mediaUrl } : {}),
-          ...(opts?.timeOriginMs ? { timeOrigin: opts.timeOriginMs } : {}),
+          ...(opts?.mimeType ? { mimeType: opts.mimeType } : {}),
+          ...(opts?.mediaHash ? { mediaHash: opts.mediaHash } : {}),
+          ...(opts?.timeOriginMs !== undefined ? { timeOrigin: opts.timeOriginMs } : {}),
           ...(ts ? { tokenStore: ts } : {}),
           ...(opts?.includeTokenTiers && ts ? { includeWords: true } : {}),
+          ...(opts?.additionalMedia?.length ? { additionalMedia: opts.additionalMedia.map(m => ({
+            mediaUrl: m.mediaUrl,
+            ...(m.mimeType ? { mimeType: m.mimeType } : {}),
+            ...(m.mediaHash ? { mediaHash: m.mediaHash } : {}),
+            ...(m.timeOriginMs !== undefined ? { timeOrigin: m.timeOriginMs } : {}),
+          })) } : {}),
+          ...(opts?.headerProperties?.length ? { headerProperties: opts.headerProperties } : {}),
         })
       },
     })
@@ -3769,18 +3839,18 @@ let patternSchemaDlgOpen = $state(false)
     if (embedConfig?.onSave) {
       await embedConfig.onSave(data)
     } else {
-      fc.downloadExport('json', { docJSON: data.doc as object, store })
+      filecontroller.downloadExport('json', { docJSON: data.doc as object, store })
     }
   }
 
   function exportVTT() {
-    fc.downloadExport('vtt', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store })
+    filecontroller.downloadExport('vtt', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store })
   }
   function exportTXT() {
-    fc.downloadExport('txt', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store })
+    filecontroller.downloadExport('txt', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store })
   }
   function exportCSV() {
-    fc.downloadExport('csv', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store })
+    filecontroller.downloadExport('csv', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store })
   }
 
   function setLanguage() {
@@ -3788,18 +3858,107 @@ let patternSchemaDlgOpen = $state(false)
     if (next !== null && next.trim()) documentLanguage = next.trim()
   }
 
-  function saveEAF(includeTokenTiers: boolean) {
-    const primaryTrack = multiPlayer.primary?.track
-    const opts: import('./formats.js').ExportOpts = {
-      language: documentLanguage,
-      ...(primaryTrack?.mediaUrl !== undefined ? { mediaUrl: primaryTrack.mediaUrl } : {}),
-      ...(primaryTrack?.offsetSec ? { timeOriginMs: Math.round(primaryTrack.offsetSec * 1000) } : {}),
-      includeTokenTiers,
-    }
-    fc.downloadExport('eaf', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store, tokenStore, opts })
+  function trackToMediaUrl(track: import('@mumo/media-player').MediaTrack): string {
+    return track.path ?? track.mediaUrl
   }
 
-  function loadEAF() { void fc.openFile(['eaf', 'etf']) }
+  function normalizeMimeType(raw: string): string {
+    if (raw === 'audio/wav' || raw === 'audio/vnd.wave' || raw === 'audio/wave') return 'audio/x-wav'
+    return raw
+  }
+
+  function _trackDescriptor(t: import('@mumo/media-player').MediaTrack, fallbackDesc?: import('@mumo/serialization').EAFMediaDescriptor) {
+    const computedUrl = trackToMediaUrl(t)
+    // In the browser track.path is null, so trackToMediaUrl returns the blob URL.
+    // Prefer the stored descriptor URL (a real file:// path) over an ephemeral blob.
+    const mediaUrl = computedUrl.startsWith('blob:') && fallbackDesc?.mediaUrl && !fallbackDesc.mediaUrl.startsWith('blob:')
+      ? fallbackDesc.mediaUrl
+      : computedUrl
+    return {
+      mediaUrl,
+      ...(t.file.type ? { mimeType: normalizeMimeType(t.file.type) } : fallbackDesc?.mimeType ? { mimeType: fallbackDesc.mimeType } : {}),
+      ...(t.mediaHash ? { mediaHash: t.mediaHash } : {}),
+      ...(t.offsetSec ? { timeOriginMs: Math.round(t.offsetSec * 1000) } : fallbackDesc?.timeOrigin !== undefined ? { timeOriginMs: fallbackDesc.timeOrigin } : {}),
+    }
+  }
+
+  function buildTrackOpts(players: readonly import('@mumo/media-player').MediaPlayer[]) {
+    const passthrough = eafPassthrough
+    const storedDescs = passthrough?.media ?? []
+
+    // Build lookup maps for matching loaded players to stored descriptors
+    const playerByPath = new Map<string, import('@mumo/media-player').MediaPlayer>()
+    const playerByHash = new Map<string, import('@mumo/media-player').MediaPlayer>()
+    for (const p of players) {
+      if (p.track?.path) playerByPath.set(p.track.path, p)
+      if (p.track?.mediaHash) playerByHash.set(p.track.mediaHash, p)
+    }
+    // Parse stored hashes from passthrough properties for hash-based matching
+    const storedHashByIndex = new Map<number, string>()
+    for (const prop of passthrough?.properties ?? []) {
+      const m = prop.name.match(/^mumo:mediaHash:(\d+)$/)
+      if (m) storedHashByIndex.set(parseInt(m[1]!), prop.value)
+    }
+
+    const coveredPlayers = new Set<import('@mumo/media-player').MediaPlayer>()
+    type Desc = { mediaUrl: string; mimeType?: string; mediaHash?: string; timeOriginMs?: number }
+    const descriptors: Desc[] = []
+
+    for (let i = 0; i < storedDescs.length; i++) {
+      const desc = storedDescs[i]!
+      // Match by explicit slot assignment, then path, then hash
+      const assignedId = eafSlotAssignments.get(desc.mediaUrl)
+      let player = (assignedId ? players.find(p => p.id === assignedId) : undefined)
+        ?? playerByPath.get(desc.mediaUrl)
+      if (!player) {
+        const h = storedHashByIndex.get(i)
+        if (h) player = playerByHash.get(h)
+      }
+      if (player) {
+        coveredPlayers.add(player)
+        descriptors.push(_trackDescriptor(player.track!, desc))
+      } else {
+        // File not loaded this session — preserve stored descriptor as-is
+        descriptors.push({
+          mediaUrl: desc.mediaUrl,
+          ...(desc.mimeType ? { mimeType: desc.mimeType } : {}),
+          ...(desc.timeOrigin !== undefined ? { timeOriginMs: desc.timeOrigin } : {}),
+        })
+      }
+    }
+
+    // Append any players not covered by stored descriptors (includes all players when no passthrough)
+    for (const p of players) {
+      if (coveredPlayers.has(p)) continue
+      const t = p.track
+      if (!t) continue
+      const url = trackToMediaUrl(t)
+      if (!url) continue
+      descriptors.push(_trackDescriptor(t))
+    }
+
+    const [primary, ...additional] = descriptors
+    const passthroughProps = (passthrough?.properties ?? []).filter(p => !p.name.startsWith('mumo:mediaHash:'))
+    return {
+      ...(primary?.mediaUrl ? { mediaUrl: primary.mediaUrl } : {}),
+      ...(primary?.mimeType ? { mimeType: primary.mimeType } : {}),
+      ...(primary?.mediaHash ? { mediaHash: primary.mediaHash } : {}),
+      ...(primary?.timeOriginMs !== undefined ? { timeOriginMs: primary.timeOriginMs } : {}),
+      ...(additional.length ? { additionalMedia: additional } : {}),
+      ...(passthroughProps.length ? { headerProperties: passthroughProps } : {}),
+    } satisfies import('./formats.js').ExportOpts
+  }
+
+  function saveEAF(includeTokenTiers: boolean) {
+    const opts: import('./formats.js').ExportOpts = {
+      language: documentLanguage,
+      ...buildTrackOpts(multiPlayer.players),
+      includeTokenTiers,
+    }
+    filecontroller.downloadExport('eaf', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store, tokenStore, opts })
+  }
+
+  function loadEAF() { void filecontroller.openFile(['eaf', 'etf']) }
 
   async function commitEafImport(opts: {
     transcriptTierIds: Set<string>
@@ -3807,7 +3966,7 @@ let patternSchemaDlgOpen = $state(false)
     tokenTiers: import('@mumo/serialization').TokenTierEntry[]
     updatedProjectConfig?: import('@mumo/serialization').TokenizationOpts
   }) {
-    const { eaf, eafFilePath } = eafImportDlg
+    const { eaf } = eafImportDlg
     if (!eaf) return
     if (opts.updatedProjectConfig) store.setTokenizerConfig({ punctuationChars: opts.updatedProjectConfig.punctuationChars })
     try {
@@ -3820,7 +3979,8 @@ let patternSchemaDlgOpen = $state(false)
       store.loadJSON({ annotations: result.annotations, tiers: result.tiers, vocabularies: result.vocabularies, linguisticTypes: result.linguisticTypes, participants: result.participants })
       store.loadTokenTimes(result.tokenTimes ?? {})
       _applyNewDoc(newDoc, result.tokens)
-      fc.currentFormat = 'eaf'
+      filecontroller.currentFormat = 'eaf'
+      eafPassthrough = { media: eaf.media, properties: eaf.properties }
     } catch (err) {
       console.error('Failed to import EAF:', err)
       alert('Could not import EAF.')
@@ -3829,17 +3989,10 @@ let patternSchemaDlgOpen = $state(false)
 
     if (eaf.languages.length > 0) documentLanguage = eaf.languages[0]!.langId
 
-    if (eaf.media.length > 0 && !multiPlayer.primary) {
-      for (const descriptor of eaf.media) {
-        const result = await mediaResolver.resolve(descriptor, eafFilePath, platform)
-        if (!result) continue
-        const timeOriginSec = (descriptor.timeOrigin ?? 0) / 1000
-        await _loadResolvedMedia(result, timeOriginSec)
-      }
-    }
+    if (eaf.media.length > 0) linkedMediaOpen = true
   }
 
-  function loadMMEAF() { void fc.openFile(['mmeaf', 'mmetf']) }
+  function loadMMEAF() { void filecontroller.openFile(['mmeaf', 'mmetf']) }
 
   function openCollabDlg() { openMenu = null; collabDlgOpen = true }
 
@@ -3879,7 +4032,8 @@ let patternSchemaDlgOpen = $state(false)
   }
 
   function saveMMEAF() {
-    fc.downloadExport('mmeaf', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store, tokenStore })
+    const opts = buildTrackOpts(multiPlayer.players)
+    filecontroller.downloadExport('mmeaf', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store, tokenStore, opts })
   }
 
   function _tileToUint8Array(tile: SpectrogramTile): Promise<Uint8Array> {
@@ -3919,7 +4073,7 @@ let patternSchemaDlgOpen = $state(false)
     return { tileIndex: -1, pixels: imageData.data, width, height, timeStart, timeEnd }
   }
 
-  function loadMumo() { void fc.openFile(['mumo']) }
+  function loadMumo() { void filecontroller.openFile(['mumo']) }
 
   async function _openMumoPath(filePath: string, seekFragId?: string, seekTime?: number) {
     try {
@@ -3928,9 +4082,9 @@ let patternSchemaDlgOpen = $state(false)
       if (!raw) return
       const filename = filePath.split(/[/\\]/).pop() ?? filePath
       await _loadMumoBytes(new Uint8Array(raw), filePath)
-      fc.currentFilename = filename
-      fc.currentFilePath = filePath
-      fc.currentFormat   = 'mumo'
+      filecontroller.currentFilename = filename
+      filecontroller.currentFilePath = filePath
+      filecontroller.currentFormat   = 'mumo'
       currentView = 'editor'
       if (seekFragId) {
         const bm = store.getBookmark(seekFragId)
@@ -3947,12 +4101,12 @@ let patternSchemaDlgOpen = $state(false)
     if (isElectron) {
       type EApi = { showSaveDialog(defaultName: string): Promise<string | null> }
       const eApi = (window as unknown as { electronAPI: EApi }).electronAPI
-      const filePath = await eApi.showSaveDialog(fc.currentFilename ?? 'transcript.mumo')
+      const filePath = await eApi.showSaveDialog(filecontroller.currentFilename ?? 'transcript.mumo')
       if (!filePath) return
-      fc.currentFilePath = filePath
-      fc.currentFilename = filePath.split(/[/\\]/).pop() ?? filePath
+      filecontroller.currentFilePath = filePath
+      filecontroller.currentFilename = filePath.split(/[/\\]/).pop() ?? filePath
     } else {
-      const name = fc.promptSaveAs()
+      const name = filecontroller.promptSaveAs()
       if (!name) return
     }
     await saveMumo()
@@ -4061,14 +4215,14 @@ let patternSchemaDlgOpen = $state(false)
       ...(trackSetsJSON !== undefined ? { trackSetsJSON } : {}),
       ...(trackBufferInputs.length ? { trackBuffers: trackBufferInputs } : {}),
     })
-    if (isElectron && fc.currentFilePath) {
+    if (isElectron && filecontroller.currentFilePath) {
       type EApi = { saveFile(path: string, data: Uint8Array): Promise<void> }
       const eApi = (window as unknown as { electronAPI: EApi }).electronAPI
-      await eApi.saveFile(fc.currentFilePath, packed)
+      await eApi.saveFile(filecontroller.currentFilePath, packed)
     } else {
       const a = Object.assign(document.createElement('a'), {
         href: URL.createObjectURL(new Blob([(packed.buffer as ArrayBuffer).slice(packed.byteOffset, packed.byteOffset + packed.byteLength)], { type: 'application/zip' })),
-        download: fc.currentFilename ?? 'transcript.mumo',
+        download: filecontroller.currentFilename ?? 'transcript.mumo',
       })
       a.click()
       URL.revokeObjectURL(a.href)
@@ -4076,11 +4230,11 @@ let patternSchemaDlgOpen = $state(false)
   }
 
   function saveETF() {
-    fc.downloadExport('etf', { docJSON: {}, store })
+    filecontroller.downloadExport('etf', { docJSON: {}, store })
   }
 
   function saveMMETF() {
-    fc.downloadExport('mmetf', { docJSON: {}, store })
+    filecontroller.downloadExport('mmetf', { docJSON: {}, store })
   }
 
   // --- Track importers ---
@@ -4146,14 +4300,33 @@ let patternSchemaDlgOpen = $state(false)
     return [...seen].sort()
   }
 
-  function loadJSON() { void fc.openFile(['json']) }
+  function loadJSON() { void filecontroller.openFile(['json']) }
 
-  function openAny() { void fc.openFile(undefined, 'mumo files') }
-  function openTemplate() { void fc.openTemplate() }
+  function openAny() { void filecontroller.openFile(undefined, 'mumo files') }
+  function openTemplate() { void filecontroller.openTemplate() }
 
   function saveTemplate() {
-    if (fc.currentFormat === 'eaf') saveETF()
+    if (filecontroller.currentFormat === 'eaf') saveETF()
     else saveMMETF()
+  }
+
+  let applyTemplateDlgOpen = $state(false)
+  let applyTemplateDlgData = $state<ReturnType<typeof buildTemplateMerge> | null>(null)
+
+  async function applyTemplate() {
+    const file = await platform.openBinaryFile(['mmetf', 'etf'], 'Template files')
+    if (!file) return
+    const text = await file.file.text()
+    const ext = (file.path ?? file.file.name).split('.').pop()?.toLowerCase()
+    let tmpl: Parameters<typeof buildTemplateMerge>[0]
+    try {
+      tmpl = ext === 'mmetf' ? parseMMETF(text) : parseETF(text)
+    } catch {
+      alert('Could not parse template file.')
+      return
+    }
+    applyTemplateDlgData = buildTemplateMerge(tmpl, store)
+    applyTemplateDlgOpen = true
   }
 </script>
 
@@ -4474,6 +4647,15 @@ let patternSchemaDlgOpen = $state(false)
   />
 {/if}
 
+{#if applyTemplateDlgOpen && applyTemplateDlgData}
+  <ApplyTemplateDlg
+    conflicts={applyTemplateDlgData.conflicts}
+    preview={applyTemplateDlgData.preview}
+    onconfirm={() => applyTemplateDlgData!.applyFn(store)}
+    onclose={() => { applyTemplateDlgOpen = false }}
+  />
+{/if}
+
 {#if eafImportDlg.open && eafImportDlg.eaf}
   <EafImportDlg
     eaf={eafImportDlg.eaf}
@@ -4507,7 +4689,7 @@ let patternSchemaDlgOpen = $state(false)
       else undoManager.redo()
     }
   }
-  if (matchKey(e, 'save'))              { e.preventDefault(); void (fc.currentFilename ? saveMumo() : saveMumoAs()) }
+  if (matchKey(e, 'save'))              { e.preventDefault(); void (filecontroller.currentFilename ? saveMumo() : saveMumoAs()) }
   if (matchKey(e, 'speed_up'))          { e.preventDefault(); stepSpeedUp() }
   if (matchKey(e, 'speed_down'))        { e.preventDefault(); stepSpeedDown() }
   if (matchKey(e, 'play_pause_global')) { e.preventDefault(); togglePlay(); return }
@@ -4674,7 +4856,7 @@ let patternSchemaDlgOpen = $state(false)
             </div>
           </div>
           {/if}
-          <button onclick={() => { openMenu = null; void (fc.currentFilePath ? saveMumo() : saveMumoAs()) }}>Save{fc.currentFilename ? ` (${fc.currentFilename})` : ''}</button>
+          <button onclick={() => { openMenu = null; void (filecontroller.currentFilePath ? saveMumo() : saveMumoAs()) }}>Save{filecontroller.currentFilename ? ` (${filecontroller.currentFilename})` : ''}</button>
           <div class="mb-sub-wrap">
             <button onclick={() => { openMenu = null; void saveMumoAs() }}>Save As… <span class="mb-arrow">▶</span></button>
             <div class="mb-sub-drop">
@@ -4709,11 +4891,11 @@ let patternSchemaDlgOpen = $state(false)
               <button onclick={() => { openMenu = null; saveMMETF() }}>Save MMETF</button>
             </div>
           </div>
+          <button onclick={() => { openMenu = null; void applyTemplate() }}>Apply template…</button>
           <hr class="mb-sep" />
           <button onclick={() => { openMenu = null; setLanguage() }}>Language: {documentLanguage}</button>
           <hr class="mb-sep" />
-          <button onclick={() => { openMenu = null; void openMediaPicker() }}>Load media…</button>
-          <button onclick={() => { openMenu = null; linkedMediaOpen = true }}>Link media file…</button>
+          <button onclick={() => { openMenu = null; linkedMediaOpen = true }}>Manage media…</button>
           <hr class="mb-sep" />
           {#if _showFileOpen}
           <div class="mb-sub-wrap">
@@ -4974,16 +5156,42 @@ let patternSchemaDlgOpen = $state(false)
 
     <LinkedMediaDlg
       open={linkedMediaOpen}
-      players={linkedPlayers}
+      entries={mediaEntries}
       onClose={() => linkedMediaOpen = false}
-      onLink={linkMediaFile}
-      onRemove={(id) => multiPlayer.removeTrack(id)}
+      onLink={() => void linkMediaFile()}
+      onLoad={async (url) => {
+        const stored = eafPassthrough?.media.find(d => d.mediaUrl === url)
+        const offsetSec = (stored?.timeOrigin ?? 0) / 1000
+        const result = await platform.openBinaryFile(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'], 'Media files')
+        if (!result) return
+        const player = await multiPlayer.addTrack(result.file, result.path, offsetSec)
+        eafSlotAssignments = new Map(eafSlotAssignments).set(url, player.id)
+      }}
+      onRemove={(id) => {
+        if (multiPlayer.players.some(p => p.id === id)) {
+          multiPlayer.removeTrack(id)
+          const updated = new Map(eafSlotAssignments)
+          for (const [url, pid] of updated) if (pid === id) updated.delete(url)
+          eafSlotAssignments = updated
+        } else if (eafPassthrough) {
+          eafPassthrough = { ...eafPassthrough, media: eafPassthrough.media.filter(d => d.mediaUrl !== id) }
+        }
+      }}
       onOffsetChange={(id, offsetSec) => {
-        multiPlayer.updateTrackOffset(id, offsetSec)
-        mediaSignals = mediaSignals.map(s =>
-          s.id.startsWith(id + ':') ? { ...s, timeOffset: offsetSec } : s
-        )
-        _flushSignals()
+        if (multiPlayer.players.some(p => p.id === id)) {
+          multiPlayer.updateTrackOffset(id, offsetSec)
+          mediaSignals = mediaSignals.map(s =>
+            s.id.startsWith(id + ':') ? { ...s, timeOffset: offsetSec } : s
+          )
+          _flushSignals()
+        } else if (eafPassthrough) {
+          eafPassthrough = {
+            ...eafPassthrough,
+            media: eafPassthrough.media.map(d =>
+              d.mediaUrl === id ? { ...d, timeOrigin: Math.round(offsetSec * 1000) } : d
+            ),
+          }
+        }
       }}
     />
     {#if showTranscript}
@@ -5191,7 +5399,7 @@ let patternSchemaDlgOpen = $state(false)
             if (eApi?.collectionSetsAddItem && activeCollectionId !== null) {
               void eApi.collectionSetsAddItem(activeCollectionId, {
                 kind: 'bookmark',
-                docPath: fc.currentFilename ?? '',
+                docPath: filecontroller.currentFilename ?? '',
                 refId: bm.id,
                 startS: bm.startSeconds,
                 endS: bm.endSeconds,

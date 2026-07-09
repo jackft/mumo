@@ -90,6 +90,7 @@ export interface EAFDocument {
   media: EAFMediaDescriptor[]
   externalRefs: EAFExternalRef[]
   languages: EAFLanguage[]
+  properties: Array<{ name: string; value: string }>
   author?: string
 }
 

@@ -22,7 +22,7 @@ import { buildTimeMap } from './time-slots.js'
 
 const EAF_ARRAY_TAGS = new Set([
   'TIME_SLOT', 'TIER', 'ANNOTATION', 'LINGUISTIC_TYPE', 'CONTROLLED_VOCABULARY',
-  'CV_ENTRY_ML', 'CVE_VALUE', 'DESCRIPTION', 'MEDIA_DESCRIPTOR', 'EXTERNAL_REF', 'LANGUAGE', 'CONSTRAINT',
+  'CV_ENTRY_ML', 'CVE_VALUE', 'DESCRIPTION', 'MEDIA_DESCRIPTOR', 'EXTERNAL_REF', 'LANGUAGE', 'CONSTRAINT', 'PROPERTY',
 ])
 
 const eafXmlParser = new XMLParser({
@@ -172,7 +172,11 @@ export function parseXML(xml: string): EAFDocument {
     }
   })
 
-  return { timeSlots, tiers, linguisticTypes, vocabularies, media, externalRefs, languages, ...(author ? { author } : {}) }
+  const properties: Array<{ name: string; value: string }> = ((hdrEl['PROPERTY'] ?? []) as Record<string, unknown>[])
+    .map(el => ({ name: (ga(el, 'NAME') ?? '').trim(), value: (gt(el) ?? '').trim() }))
+    .filter(p => p.name)
+
+  return { timeSlots, tiers, linguisticTypes, vocabularies, media, externalRefs, languages, properties, ...(author ? { author } : {}) }
 }
 
 function normalizeConstraint(s: string | null): EAFLinguisticType['constraint'] {

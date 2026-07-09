@@ -47,7 +47,8 @@ function isoDate(): string {
 export interface EmitEAFOptions {
   includeWords?: boolean    // emit word-level token tiers (default: false)
   tokenStore?: TokenStore   // required when includeWords is true
-  mediaUrl?: string         // MEDIA_DESCRIPTOR URL
+  mediaUrl?: string         // MEDIA_DESCRIPTOR URL (raw path or http URL)
+  mediaHash?: string        // content hash stored as a PROPERTY element
   relativeMediaUrl?: string // RELATIVE_MEDIA_URL (relative path for ELAN portability)
   extractedFrom?: string    // EXTRACTED_FROM attribute on MEDIA_DESCRIPTOR
   mimeType?: string
@@ -55,7 +56,9 @@ export interface EmitEAFOptions {
   isTemplate?: boolean      // emit ETF (no annotations, no time slots)
   author?: string
   language?: string         // BCP47 tag for document language (e.g. 'en', 'fr')
-  additionalMedia?: Array<{ mediaUrl: string; mimeType?: string; timeOrigin?: number; relativeMediaUrl?: string }>
+  additionalMedia?: Array<{ mediaUrl: string; mediaHash?: string; mimeType?: string; timeOrigin?: number; relativeMediaUrl?: string }>
+  /** Passthrough PROPERTY elements (e.g. from an original EAF). mumo:mediaHash:* are always regenerated and must not be included here. */
+  headerProperties?: Array<{ name: string; value: string }>
 }
 
 // buildEAFDocumentObject — returns the raw JS object before XMLBuilder
@@ -71,6 +74,7 @@ export function buildEAFDocumentObject(
     includeWords = false,
     tokenStore,
     mediaUrl = '',
+    mediaHash,
     relativeMediaUrl = '',
     extractedFrom = '',
     mimeType = '',
@@ -79,6 +83,7 @@ export function buildEAFDocumentObject(
     author = 'mumo',
     language,
     additionalMedia,
+    headerProperties,
   } = opts
 
   const pool   = new TimeSlotPool()
@@ -216,6 +221,21 @@ export function buildEAFDocumentObject(
   }
   if (descriptors.length === 1)    headerObj['MEDIA_DESCRIPTOR'] = descriptors[0]
   else if (descriptors.length > 1) headerObj['MEDIA_DESCRIPTOR'] = descriptors
+
+  // PROPERTY elements: passthrough first (excl. mumo:mediaHash:* which are regenerated), then content hashes
+  const passthroughProps = (headerProperties ?? []).filter(p => !p.name.startsWith('mumo:mediaHash:'))
+  const allHashes: Array<{ index: number; hash: string }> = []
+  if (mediaHash) allHashes.push({ index: 0, hash: mediaHash })
+  for (const [i, m] of (additionalMedia ?? []).entries()) {
+    if (m.mediaHash) allHashes.push({ index: i + 1, hash: m.mediaHash })
+  }
+  const hashProps = allHashes.map(h => ({ '@_NAME': `mumo:mediaHash:${h.index}`, '#text': h.hash }))
+  const allProps = [
+    ...passthroughProps.map(p => ({ '@_NAME': p.name, '#text': p.value })),
+    ...hashProps,
+  ]
+  if (allProps.length === 1)    headerObj['PROPERTY'] = allProps[0]
+  else if (allProps.length > 1) headerObj['PROPERTY'] = allProps
 
   // TIER elements (TIME_ORDER is built afterwards — tier emission registers slots)
 
