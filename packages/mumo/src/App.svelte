@@ -1228,7 +1228,7 @@
 
     const loadedPaths  = new Set(linkedPlayers.map(p => p.track?.path).filter(Boolean) as string[])
     const loadedHashes = new Set(linkedPlayers.map(p => p.track?.mediaHash).filter(Boolean) as string[])
-    const storedHashByIndex = new Map<number, string>()
+    const storedHashByIndex = new SvelteMap<number, string>()
     for (const prop of eafPassthrough.properties) {
       const m = prop.name.match(/^mumo:mediaHash:(\d+)$/)
       if (m) storedHashByIndex.set(parseInt(m[1]!), prop.value)
@@ -3887,20 +3887,20 @@ let patternSchemaDlgOpen = $state(false)
     const storedDescs = passthrough?.media ?? []
 
     // Build lookup maps for matching loaded players to stored descriptors
-    const playerByPath = new Map<string, import('@mumo/media-player').MediaPlayer>()
-    const playerByHash = new Map<string, import('@mumo/media-player').MediaPlayer>()
+    const playerByPath = new SvelteMap<string, import('@mumo/media-player').MediaPlayer>()
+    const playerByHash = new SvelteMap<string, import('@mumo/media-player').MediaPlayer>()
     for (const p of players) {
       if (p.track?.path) playerByPath.set(p.track.path, p)
       if (p.track?.mediaHash) playerByHash.set(p.track.mediaHash, p)
     }
     // Parse stored hashes from passthrough properties for hash-based matching
-    const storedHashByIndex = new Map<number, string>()
+    const storedHashByIndex = new SvelteMap<number, string>()
     for (const prop of passthrough?.properties ?? []) {
       const m = prop.name.match(/^mumo:mediaHash:(\d+)$/)
       if (m) storedHashByIndex.set(parseInt(m[1]!), prop.value)
     }
 
-    const coveredPlayers = new Set<import('@mumo/media-player').MediaPlayer>()
+    const coveredPlayers = new SvelteSet<import('@mumo/media-player').MediaPlayer>()
     type Desc = { mediaUrl: string; mimeType?: string; mediaHash?: string; timeOriginMs?: number }
     const descriptors: Desc[] = []
 
@@ -5165,12 +5165,12 @@ let patternSchemaDlgOpen = $state(false)
         const result = await platform.openBinaryFile(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'], 'Media files')
         if (!result) return
         const player = await multiPlayer.addTrack(result.file, result.path, offsetSec)
-        eafSlotAssignments = new Map(eafSlotAssignments).set(url, player.id)
+        eafSlotAssignments = new SvelteMap(eafSlotAssignments).set(url, player.id)
       }}
       onRemove={(id) => {
         if (multiPlayer.players.some(p => p.id === id)) {
           multiPlayer.removeTrack(id)
-          const updated = new Map(eafSlotAssignments)
+          const updated = new SvelteMap(eafSlotAssignments)
           for (const [url, pid] of updated) if (pid === id) updated.delete(url)
           eafSlotAssignments = updated
         } else if (eafPassthrough) {

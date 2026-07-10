@@ -173,7 +173,7 @@ export function parseXML(xml: string): EAFDocument {
   })
 
   const properties: Array<{ name: string; value: string }> = ((hdrEl['PROPERTY'] ?? []) as Record<string, unknown>[])
-    .map(el => ({ name: (ga(el, 'NAME') ?? '').trim(), value: (gt(el) ?? '').trim() }))
+    .map(el => ({ name: (ga(el, 'NAME') ?? '').trim(), value: gt(el).trim() }))
     .filter(p => p.name)
 
   return { timeSlots, tiers, linguisticTypes, vocabularies, media, externalRefs, languages, properties, ...(author ? { author } : {}) }
