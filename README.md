@@ -1,6 +1,8 @@
 # mumo
 tools for doing multimodal interaction research
 
+![audio-demo](./assets/audio-transcript.png)
+
 ## Install
 Download an installer or binary from [releases](https://github.com/jackft/mumo/releases). Runs on Linux Mac Windows.
 
