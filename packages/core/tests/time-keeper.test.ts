@@ -52,6 +52,41 @@ describe('TimeKeeper', () => {
     expect(cb).toHaveBeenCalledWith(['a'], [])
   })
 
+  it('clearRegistrations fires removed for previously-active IDs', () => {
+    const tk = new TimeKeeper()
+    tk.register('a', 1.0, 2.0)
+    const cb = vi.fn()
+    tk.onActiveChange(cb)
+    tk.seek(1.5)
+    cb.mockClear()
+
+    tk.clearRegistrations()
+    expect(cb).toHaveBeenCalledWith([], ['a'])
+  })
+
+  it('clears stale highlight when re-registered times no longer contain playhead', () => {
+    // Regression: after a drag/sync the utterance moved past the playhead but stayed highlighted
+    // because clearRegistrations() didn't notify listeners, so the subsequent seek saw an empty
+    // activeIds baseline and produced no diff.
+    const tk = new TimeKeeper()
+    tk.register('a', 1.0, 3.0)
+    const cb = vi.fn()
+    tk.onActiveChange(cb)
+    tk.seek(2.0)  // 'a' is active
+    cb.mockClear()
+
+    // Simulate _syncTimeKeeperFromDoc after utterance moved to [5, 7] — outside playhead
+    tk.clearRegistrations()
+    tk.register('a', 5.0, 7.0)
+    tk.seek(2.0)
+
+    // 'a' must appear in removed across all calls; must not end up in added
+    const allAdded   = (cb.mock.calls as [string[], string[]][]).flatMap(([a]) => a)
+    const allRemoved = (cb.mock.calls as [string[], string[]][]).flatMap(([, r]) => r)
+    expect(allRemoved).toContain('a')
+    expect(allAdded).not.toContain('a')
+  })
+
   it('transitions correctly between blocks', () => {
     const tk = new TimeKeeper()
     tk.register('a', 0.0, 1.0)

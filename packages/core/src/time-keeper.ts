@@ -36,9 +36,13 @@ export class TimeKeeper {
   }
 
   clearRegistrations(): void {
+    const removed = [...this.activeIds]
     this.tree.clear()
     this.registered.clear()
     this.activeIds.clear()
+    if (removed.length > 0) {
+      for (const cb of this.activeChangeListeners) cb([], removed)
+    }
   }
 
   // Time control

@@ -16,9 +16,9 @@ export type TemplateMergeResult = {
 }
 
 export function buildTemplateMerge(tmpl: TemplateMergeInput, store: AnnotationStore): TemplateMergeResult {
-  const tmplVocabs  = tmpl.vocabularies    ?? []
-  const tmplLTs     = tmpl.linguisticTypes ?? []
-  const tmplTiers   = tmpl.tiers           ?? []
+  const tmplVocabs  = tmpl.vocabularies
+  const tmplLTs     = tmpl.linguisticTypes
+  const tmplTiers   = tmpl.tiers
   const tmplSchemas = tmpl.patternSchemas  ?? []
 
   const exVocabs  = new Map(store.allVocabularies().map(v  => [v.name, v]))
@@ -207,7 +207,7 @@ export function buildTemplateMerge(tmpl: TemplateMergeInput, store: AnnotationSt
         for (const tmplSlot of schema.slots) {
           const exSlotIdx = mergedSlots.findIndex(s => s.name === tmplSlot.name)
           if (exSlotIdx === -1) {
-            mergedSlots.push({ ...tmplSlot, id: newId(), metrics: tmplSlot.metrics.map(m => ({ ...m, id: newId(), ...(m.vocabularyId ? { vocabularyId: vocabIdMap.get(m.vocabularyId) ?? m.vocabularyId } : {}) })) } as typeof tmplSlot)
+            mergedSlots.push({ ...tmplSlot, id: newId(), metrics: tmplSlot.metrics.map(m => ({ ...m, id: newId(), ...(m.vocabularyId ? { vocabularyId: vocabIdMap.get(m.vocabularyId) ?? m.vocabularyId } : {}) })) })
           } else {
             const exSlot = mergedSlots[exSlotIdx]!
             const exMetricNames = new Set(exSlot.metrics.map(m => m.name))

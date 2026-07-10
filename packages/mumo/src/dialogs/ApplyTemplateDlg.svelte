@@ -34,7 +34,7 @@
         <span>Cannot apply — {conflicts.length} conflict{conflicts.length > 1 ? 's' : ''} found</span>
       </div>
       <div class="atd-conflict-list">
-        {#each conflicts as c}
+        {#each conflicts as c (c.category + ':' + c.name)}
           <div class="atd-conflict-row">
             <span class="atd-conflict-cat">{c.category}</span>
             <span class="atd-conflict-name">"{c.name}"</span>
@@ -47,13 +47,13 @@
       <p class="atd-empty">All items in the template are already present — nothing to apply.</p>
 
     {:else}
-      {#each preview as section}
+      {#each preview as section (section.category)}
         {@const visible = section.items.filter(i => i.action !== 'skip')}
         {@const skipped = section.items.filter(i => i.action === 'skip').length}
         {#if visible.length > 0 || skipped > 0}
           <div class="atd-section">
             <div class="atd-section-head">{section.category}</div>
-            {#each visible as item}
+            {#each visible as item (item.name)}
               <div class="atd-item">
                 <span class="atd-badge atd-badge-{item.action}">
                   {item.action === 'add' ? 'new' : 'merge'}
@@ -65,7 +65,7 @@
                   {/if}
                   {#if item.additions && item.additions.length > 0}
                     <div class="atd-additions">
-                      {#each item.additions as addition}
+                      {#each item.additions as addition (addition)}
                         <span class="atd-addition">+ {addition}</span>
                       {/each}
                     </div>

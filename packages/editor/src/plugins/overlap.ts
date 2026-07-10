@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
 import { Plugin, PluginKey } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
+import type { EditorView } from 'prosemirror-view'
 import { schema } from '@mumo/core'
 import type { Node } from 'prosemirror-model'
 
@@ -195,10 +196,59 @@ function buildPath(brackets: BracketPos[], kind: 'start' | 'end'): string {
     const xBar   = innerX - 3
     return `M ${xBar} ${yTop} L ${xBar} ${yBot} M ${xBar} ${yTop} L ${innerX} ${yTop} M ${xBar} ${yBot} L ${innerX} ${yBot}`
   } else {
+    // x is the text-end edge (the ] atom's left).  Mirror the start bracket:
+    // bar 3px right of the text, inside the atom's 0.5em trailing margin,
+    // with ticks pointing back to the text edge.
     const innerX = Math.max(...xs)
-    const xBar   = innerX - 3
-    return `M ${xBar} ${yTop} L ${xBar} ${yBot} M ${xBar} ${yTop} L ${xBar - 3} ${yTop} M ${xBar} ${yBot} L ${xBar - 3} ${yBot}`
+    const xBar   = innerX + 3
+    return `M ${xBar} ${yTop} L ${xBar} ${yBot} M ${xBar} ${yTop} L ${innerX} ${yTop} M ${xBar} ${yBot} L ${innerX} ${yBot}`
   }
+}
+
+// Viewport-space rect of the visual line that contains the bracket at `pos`.
+//
+// The core problem: view.coordsAtPos(pos+1) returns the *previous* visual
+// line's rect whenever the queried position is at the very start of a wrapped
+// visual line.  The x coordinate is unaffected (both lines start at x=0);
+// only top/bottom are wrong.
+//
+// The fix: instead of querying the boundary position pos+1, find the first
+// text node that follows the bracket within the same block and query a
+// position *inside* that text (1 char in).  Interior text positions are never
+// at a visual-line boundary, so coordsAtPos returns the correct line.
+//
+// If no text follows (bracket at end of block), try text before the bracket
+// using a mid-text position for the same reason.
+function bracketLineRect(view: EditorView, pos: number): { top: number; bottom: number } | null {
+  const $pos   = view.state.doc.resolve(pos)
+  const parent = $pos.parent
+  const index  = $pos.index()
+
+  // Walk forward through the parent's inline children after the bracket.
+  let p = pos + 1
+  for (let i = index + 1; i < parent.childCount; i++) {
+    const child = parent.child(i)
+    if (child.isText) {
+      // p = text node start.  p+1 = 1 char inside = never a line-start boundary.
+      const c = view.coordsAtPos(child.nodeSize >= 2 ? p + 1 : p)
+      return { top: c.top, bottom: c.bottom }
+    }
+    p += child.nodeSize
+  }
+
+  // Walk backward: use mid-text to avoid start/end boundaries.
+  p = pos
+  for (let i = index - 1; i >= 0; i--) {
+    const child = parent.child(i)
+    p -= child.nodeSize
+    if (child.isText) {
+      const mid = p + Math.max(1, Math.floor(child.nodeSize / 2))
+      const c   = view.coordsAtPos(mid)
+      return { top: c.top, bottom: c.bottom }
+    }
+  }
+
+  return null  // block has no text at all; caller falls back to coordsAtPos(pos+1)
 }
 
 export class OverlapOverlayPlugin implements OverlayPlugin {
@@ -237,7 +287,6 @@ export class OverlapOverlayPlugin implements OverlayPlugin {
       this._observing = pane
     }
 
-    ctx.setSvgHeight(pane.scrollHeight)
     while (group.firstChild) group.removeChild(group.firstChild)
 
     const nodeType = schema.nodes['overlap_bracket']
@@ -250,6 +299,32 @@ export class OverlapOverlayPlugin implements OverlayPlugin {
     const scrollTop   = pane.scrollTop
     const startGroups = new Map<string, BracketPos[]>()
     const endGroups   = new Map<string, BracketPos[]>()
+    const orderedIds  = new Set<string>()  // insertion order = doc order of each group's first bracket
+
+    // Vertical placement for one bracket: real line rect from the bracket's
+    // own DOM element (bracketLineRect), coordsAtPos as fallback, extended to
+    // cover a tall preceding atom (image).
+    const measureVertical = (pos: number, rect: DOMRect, sTop: number) => {
+      const line   = bracketLineRect(view, pos) ?? view.coordsAtPos(pos + 1)
+      let lineTop  = line.top    - rect.top + sTop
+      let lineBot  = line.bottom - rect.top + sTop
+      const y      = (lineTop + lineBot) / 2
+
+      const $pos  = view.state.doc.resolve(pos)
+      const index = $pos.index()
+      if (index > 0) {
+        const prevSibling = $pos.parent.child(index - 1)
+        if (prevSibling.type.name === 'image') {
+          const imgDOM = view.nodeDOM(pos - prevSibling.nodeSize)
+          if (imgDOM instanceof HTMLElement) {
+            const r = imgDOM.getBoundingClientRect()
+            lineTop = Math.min(lineTop, r.top    - rect.top + sTop)
+            lineBot = Math.max(lineBot, r.bottom - rect.top + sTop)
+          }
+        }
+      }
+      return { y, lineTop, lineBot }
+    }
 
     view.state.doc.descendants((node: Node, pos: number) => {
       if (node.type !== nodeType) return
@@ -260,49 +335,22 @@ export class OverlapOverlayPlugin implements OverlayPlugin {
       // Use '\x00' as leafText so inline atoms (images) count as content
       const isBlockStart = view.state.doc.textBetween(blockStart, pos, '', '\x00').length === 0
 
-      const coords  = view.coordsAtPos(pos + 1)
-      const x       = coords.left   - paneRect.left
-      const y       = (coords.top + coords.bottom) / 2 - paneRect.top + scrollTop
-      let lineTop = coords.top    - paneRect.top + scrollTop
-      let lineBot = coords.bottom - paneRect.top + scrollTop
-
-      // coordsAtPos can return the previous block's last-line top when the
-      // bracket is the first child of a block and the block above word-wraps.
-      // Use the contentDOM's actual first rendered line rect instead.
-      if (isBlockStart) {
-        const domInfo  = view.domAtPos(pos)
-        const contentEl = domInfo.node instanceof Element
-          ? domInfo.node
-          : domInfo.node.parentElement
-        if (contentEl) {
-          const lineRects = contentEl.getClientRects()
-          if (lineRects.length > 0) {
-            lineTop = lineRects[0]!.top    - paneRect.top + scrollTop
-            lineBot = lineRects[0]!.bottom - paneRect.top + scrollTop
-          }
-        }
-      }
-
-      // If preceded by a tall atom (image), extend line bounds to include it
-      const idx = $pos.index()
-      if (idx > 0) {
-        const prevSibling = $pos.parent.child(idx - 1)
-        if (prevSibling.type.name === 'image') {
-          const prevPos = pos - prevSibling.nodeSize
-          const imgDOM  = view.nodeDOM(prevPos)
-          if (imgDOM instanceof HTMLElement) {
-            const r = imgDOM.getBoundingClientRect()
-            lineTop = Math.min(lineTop, r.top    - paneRect.top + scrollTop)
-            lineBot = Math.max(lineBot, r.bottom - paneRect.top + scrollTop)
-          }
-        }
-      }
+      // Start brackets: x = the atom's right edge (pos+1) = where the overlap
+      // text begins.  End brackets: x = the atom's LEFT edge (pos) = where the
+      // overlap text ends.  Never use pos+1 for end brackets: when text
+      // follows, coordsAtPos snaps to that text's left edge, which includes
+      // the ]'s 0.5em margin-right — but at block end it returns the atom
+      // edge without margin, so mid-utterance and utterance-final ] would be
+      // measured with inconsistent conventions.
+      const x = view.coordsAtPos(kind === 'end' ? pos : pos + 1).left - paneRect.left
+      const { y, lineTop, lineBot } = measureVertical(pos, paneRect, scrollTop)
 
       const id  = node.attrs.id as string
       const map = kind === 'start' ? startGroups : endGroups
       const arr = map.get(id) ?? []
       arr.push({ id, kind, pos, blockStart, x, y, lineTop, lineBot, isBlockStart })
       map.set(id, arr)
+      orderedIds.add(id)
     })
 
     const spacerMap = new Map<number, number>()
@@ -317,26 +365,35 @@ export class OverlapOverlayPlugin implements OverlayPlugin {
       }
       return total
     }
-    for (const [, brackets] of startGroups) {
-      if (brackets.length < 2) continue
-      const effectiveXs = brackets.map(b => b.x + spacersBefore(b.pos, b.blockStart))
-      const maxX = Math.max(...effectiveXs)
-      for (let i = 0; i < brackets.length; i++) {
-        const b = brackets[i]!
-        const delta = maxX - effectiveXs[i]!
-        if (delta > 0.5) {
-          const prev = spacerMap.get(b.pos) ?? 0
-          if (delta > prev) spacerMap.set(b.pos, delta)
+    // Align groups strictly in document order, starts then ends within each
+    // group.  A spacer inserted anywhere shifts every bracket after it in the
+    // same utterance, and a group's END alignment can insert a post-] spacer
+    // mid-utterance — before a LATER group's brackets in that utterance.
+    // Aligning all start groups before any end group (the old order) let a
+    // group-1 end spacer invalidate group-2's already-computed start
+    // alignment: the shared line shifted right while the other line's spacer
+    // stayed stale, so only the "top" line of group 2 ended up adjusted.
+    for (const id of orderedIds) {
+      const startBrackets = startGroups.get(id)
+      if (startBrackets && startBrackets.length >= 2) {
+        const effectiveXs = startBrackets.map(b => b.x + spacersBefore(b.pos, b.blockStart))
+        const maxX = Math.max(...effectiveXs)
+        for (let i = 0; i < startBrackets.length; i++) {
+          const b = startBrackets[i]!
+          const delta = maxX - effectiveXs[i]!
+          if (delta > 0.5) {
+            const prev = spacerMap.get(b.pos) ?? 0
+            if (delta > prev) spacerMap.set(b.pos, delta)
+          }
         }
       }
-    }
 
-    // Align all end brackets in each group to the rightmost ] position.
-    // Block-start ] get a pre-spacer (pushes the atom itself right).
-    // Mid-utterance ] get a post-spacer at pos+1 (pushes only the following text right).
-    // The corresponding start bracket x is used as a minimum target for block-start ].
-    for (const [id, endBrackets] of endGroups) {
-      const startBrackets = startGroups.get(id)
+      // Align all end brackets in the group to the rightmost ] position.
+      // Block-start ] get a pre-spacer (pushes the atom itself right).
+      // Mid-utterance ] get a post-spacer at pos+1 (pushes only the following text right).
+      // The corresponding start bracket x is used as a minimum target for block-start ].
+      const endBrackets = endGroups.get(id)
+      if (!endBrackets) continue
       const startMaxX = startBrackets
         ? Math.max(...startBrackets.map(b => b.x + spacersBefore(b.pos, b.blockStart) + (spacerMap.get(b.pos) ?? 0)))
         : -Infinity
@@ -371,7 +428,30 @@ export class OverlapOverlayPlugin implements OverlayPlugin {
           b.x += spacersBefore(b.pos, b.blockStart) + (spacerMap.get(b.pos) ?? 0) + (spacerMap.get(b.pos + 1) ?? 0)
         }
       }
+
+      // Spacers change line wrapping (text pushed right can wrap earlier),
+      // shifting every line below the wrap point.  A scrollHeight comparison
+      // cannot detect this: the SVG overlay is itself an absolutely positioned
+      // child of the pane still holding the previous draw's height, which pins
+      // scrollHeight and masks content growth.  Always remeasure vertical
+      // coords from the final layout, with fresh pane rect and scrollTop
+      // (reflow can move scrollTop via scroll anchoring).
+      const paneRect2  = pane.getBoundingClientRect()
+      const scrollTop2 = pane.scrollTop
+      const remeasure = (b: BracketPos) => {
+        const v = measureVertical(b.pos, paneRect2, scrollTop2)
+        b.y       = v.y
+        b.lineTop = v.lineTop
+        b.lineBot = v.lineBot
+      }
+      for (const [, brackets] of startGroups) for (const b of brackets) remeasure(b)
+      for (const [, brackets] of endGroups)   for (const b of brackets) remeasure(b)
     }
+
+    // Size the SVG to the editor content.  Never use pane.scrollHeight here:
+    // the SVG is an absolutely positioned child of the pane, so its own
+    // previous height is part of scrollHeight and the value would never shrink.
+    ctx.setSvgHeight(view.dom.getBoundingClientRect().bottom - paneRect.top + pane.scrollTop)
 
     for (const [id, brackets] of startGroups) {
       this._addPath(group, buildPath(brackets, 'start'), id)
