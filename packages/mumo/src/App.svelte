@@ -4322,7 +4322,9 @@ let patternSchemaDlgOpen = $state(false)
   async function applyTemplate() {
     const file = await platform.openBinaryFile(['mmetf', 'etf'], 'Template files')
     if (!file) return
-    const text = await file.file.text()
+    const text = file.path && isDesktop(platform)
+      ? new TextDecoder().decode(await platform.readFileAsBytes(file.path))
+      : await file.file.text()
     const ext = (file.path ?? file.file.name).split('.').pop()?.toLowerCase()
     let tmpl: Parameters<typeof buildTemplateMerge>[0]
     try {

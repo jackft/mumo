@@ -15,6 +15,7 @@
   "desktopName": "mumo.desktop",
   "main": "out/main/index.js",
   "scripts": {
+    "predev": "node -e \"require('electron')\"",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "pack": "electron-vite build && pnpm run rebuild-native && electron-builder --config electron-builder.config.cjs --dir",
