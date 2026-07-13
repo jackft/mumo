@@ -4,7 +4,8 @@ import { promisify } from 'node:util'
 import type { MenuItemConstructorOptions } from 'electron'
 import { NATIVE_MENU_TEMPLATE } from '../../../mumo/src/nativeMenu.js'
 import type { NativeMenuItem } from '../../../mumo/src/nativeMenu.js'
-import { promises as fsPromises, constants as fsConstants, createWriteStream } from 'node:fs'
+import { promises as fsPromises, constants as fsConstants, createWriteStream, createReadStream } from 'node:fs'
+import { Readable } from 'node:stream'
 import { join, extname, basename, resolve } from 'node:path'
 
 // Crash logging
@@ -168,6 +169,14 @@ async function handleMediaRequest(request: Request): Promise<Response> {
   const mime = mimeFor(filePath)
   const rangeHeader = request.headers.get('range')
 
+  // Stream the file rather than buffering it: media players send open-ended range
+  // requests (bytes=N-) and read lazily, so buffering materializes entire multi-GB
+  // files in main-process memory — several concurrent readers per file OOM-kills the app.
+  const streamBody = (start: number, end: number): BodyInit | null => {
+    if (end < start) return null
+    return Readable.toWeb(createReadStream(filePath, { start, end })) as ReadableStream
+  }
+
   if (rangeHeader) {
     const range = parseRange(rangeHeader, fileSize)
     if (!range) {
@@ -177,27 +186,18 @@ async function handleMediaRequest(request: Request): Promise<Response> {
       })
     }
     const [start, end] = range
-    const chunkSize = end - start + 1
-    const fh = await fsPromises.open(filePath, 'r')
-    try {
-      const buf = Buffer.allocUnsafe(chunkSize)
-      await fh.read(buf, 0, chunkSize, start)
-      return new Response(buf, {
-        status: 206,
-        headers: {
-          'Content-Type': mime,
-          'Content-Length': String(chunkSize),
-          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-          'Accept-Ranges': 'bytes',
-        },
-      })
-    } finally {
-      await fh.close()
-    }
+    return new Response(streamBody(start, end), {
+      status: 206,
+      headers: {
+        'Content-Type': mime,
+        'Content-Length': String(end - start + 1),
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+      },
+    })
   }
 
-  const buf = await fsPromises.readFile(filePath)
-  return new Response(buf, {
+  return new Response(streamBody(0, fileSize - 1), {
     status: 200,
     headers: {
       'Content-Type': mime,

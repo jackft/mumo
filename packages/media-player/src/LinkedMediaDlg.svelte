@@ -34,8 +34,10 @@
       {:else}
         <div class="lmd-grid">
           {#each entries as entry (entry.id)}
-            <span class="lmd-name" class:lmd-name-unloaded={entry.kind === 'unloaded'} title={entry.id}>{entry.name}</span>
-            <span class="lmd-status">{entry.kind === 'unloaded' ? 'not loaded' : ''}</span>
+            <span class="lmd-name" class:lmd-name-unloaded={entry.kind === 'unloaded'} class:lmd-name-missing={entry.kind === 'missing'} title={entry.id}>{entry.name}</span>
+            <span class="lmd-status" class:lmd-status-missing={entry.kind === 'missing'}>
+              {#if entry.kind === 'missing'}⚠ not found{:else if entry.kind === 'unloaded'}not loaded{/if}
+            </span>
             <label class="lmd-offset-label">
               Offset (s)
               <input class="lmd-offset" type="number" step="0.01"
@@ -44,8 +46,8 @@
               />
             </label>
             <div class="lmd-actions">
-              {#if entry.kind === 'unloaded'}
-                <button class="lmd-load" onclick={() => onLoad(entry.id)}>Load</button>
+              {#if entry.kind === 'unloaded' || entry.kind === 'missing'}
+                <button class="lmd-load" onclick={() => onLoad(entry.id)}>Locate</button>
               {/if}
               <button class="lmd-remove" onclick={() => onRemove(entry.id)}>Remove</button>
             </div>
@@ -95,11 +97,13 @@
     color: #333; font-size: 12px; min-width: 0;
   }
   .lmd-name-unloaded { color: #888; font-style: italic; }
+  .lmd-name-missing  { color: #b71c1c; font-style: italic; }
   .lmd-status {
     font-size: 10px; color: #999; white-space: nowrap;
     border: 1px solid transparent; border-radius: 8px; padding: 1px 5px;
   }
   .lmd-status:not(:empty) { border-color: #ddd; }
+  .lmd-status-missing { color: #b71c1c; border-color: #ef9a9a; background: #fff8f8; }
   .lmd-offset-label {
     display: flex; align-items: center; gap: 4px;
     white-space: nowrap; color: #555; font-size: 12px;

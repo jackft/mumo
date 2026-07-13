@@ -9,8 +9,6 @@ export interface MumoImageInput {
 }
 
 export interface MumoSpectrogramInput {
-  filename: string
-  data: Uint8Array
   mediaPath: string
   mediaHash: string
   params: Record<string, unknown>
@@ -67,10 +65,7 @@ export function packMumo(input: MumoPackInput): Uint8Array {
 
   const spectrogramEntries: MumoSpectrogramEntry[] = []
   for (const spec of input.spectrograms ?? []) {
-    const path = `spectrograms/${spec.filename}`
-    files[path] = spec.data
     spectrogramEntries.push({
-      path,
       mediaPath: spec.mediaPath,
       mediaHash: spec.mediaHash,
       params: spec.params,

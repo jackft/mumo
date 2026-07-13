@@ -55,6 +55,41 @@ export function mediaCandidatePaths(
   return candidates
 }
 
+/**
+ * Computes a RELATIVE_MEDIA_URL value ('./…' or '../…', forward slashes) from the
+ * document's location to a media file, for writing into MEDIA_DESCRIPTOR on save.
+ * This is what makes a document portable across machines: the absolute MEDIA_URL
+ * breaks when the file moves, but the relative URL survives as long as the media
+ * keeps its position relative to the document.
+ *
+ * Returns null when no relative path exists (different Windows drives) or either
+ * path is not absolute.
+ */
+export function relativeMediaUrl(mediaPath: string, docPath: string): string | null {
+  const media = mediaPath.replace(/\\/g, '/')
+  const docDir = _dirname(docPath)
+  if (!docDir) return null
+
+  const isAbs = (p: string) => p.startsWith('/') || /^[A-Za-z]:\//.test(p)
+  if (!isAbs(media) || !isAbs(docDir)) return null
+
+  const driveOf = (p: string) => /^[A-Za-z]:/.exec(p)?.[0]?.toUpperCase() ?? ''
+  if (driveOf(media) !== driveOf(docDir)) return null
+
+  const mediaParts = media.split('/').filter(Boolean)
+  const dirParts   = docDir.split('/').filter(Boolean)
+  let common = 0
+  while (
+    common < mediaParts.length - 1 &&
+    common < dirParts.length &&
+    mediaParts[common] === dirParts[common]
+  ) common++
+
+  const ups = dirParts.length - common
+  const down = mediaParts.slice(common)
+  return ups === 0 ? `./${down.join('/')}` : `${'../'.repeat(ups)}${down.join('/')}`
+}
+
 function _urlToPath(url: string): string {
   if (!url) return ''
   if (!url.startsWith('file://')) return url

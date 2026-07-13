@@ -392,18 +392,37 @@
         return new Slice(sanitizeFragment(slice.content), slice.openStart, slice.openEnd)
       },
       handlePaste(view, _event, slice) {
-        // When the cursor is inside an utterance and the clipboard holds complete
-        // utterance blocks (openStart=0), pasting would replace the destination
-        // utterance node and wipe its participant/timing attrs.  Re-open the slice
-        // at depth 1 so PM merges the pasted content *into* the destination
-        // utterance instead of inserting a new block.
-        const from = view.state.selection.$from
-        if (from.depth < 1 || from.node(1)?.type.name !== 'utterance') return false
-        if (slice.openStart !== 0) return false
+        // When the pasted content is utterance node(s), never let PM replace the
+        // destination utterance node itself — that would wipe participant/timing/id.
+        // Instead, flatten the pasted utterances to inline content and splice it
+        // directly into the destination utterance's content range.
         let allUtt = slice.content.childCount > 0
         slice.content.forEach(n => { if (n.type.name !== 'utterance') allUtt = false })
         if (!allUtt) return false
-        view.dispatch(view.state.tr.replaceSelection(new Slice(slice.content, 1, slice.openEnd)))
+
+        const selFrom = view.state.selection.$from
+        let destPos: number | null = null
+        if (selFrom.depth >= 1 && selFrom.node(1)?.type.name === 'utterance') {
+          destPos = selFrom.before(1)
+        } else if (selFrom.depth === 0 && selFrom.nodeAfter?.type.name === 'utterance') {
+          destPos = selFrom.pos
+        }
+        if (destPos === null) return false
+
+        const destUtt = view.state.doc.nodeAt(destPos)
+        if (!destUtt) return false
+
+        // Flatten inline content from all pasted utterances
+        const pastedNodes: Node[] = []
+        slice.content.forEach(uttNode => uttNode.content.forEach((n: Node) => pastedNodes.push(n)))
+
+        // Replace only within the utterance's content range, clamped to the
+        // current selection so a partial selection replaces only the selected text.
+        const innerFrom = destPos + 1
+        const innerTo   = destPos + destUtt.nodeSize - 1
+        const spliceFrom = Math.max(view.state.selection.from, innerFrom)
+        const spliceTo   = Math.min(view.state.selection.to,   innerTo)
+        view.dispatch(view.state.tr.replaceWith(spliceFrom, spliceTo, pastedNodes))
         return true
       },
       nodeViews: {

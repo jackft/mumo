@@ -133,6 +133,7 @@ export class MediaPlayer {
     const mediaUrl = this._platform.mediaUrlForFile(file, path)
     const kind: 'audio' | 'video' = file.type.startsWith('video') ? 'video' : 'audio'
 
+    console.log(`[media] loading ${kind}: ${file.name}`, path ? `(${path})` : '')
     this.track = { file, path, mediaUrl, offsetSec: this.track?.offsetSec ?? 0 }
     this._setState({ mediaUrl, kind, filename: file.name, duration: 0, sampleRate: 0, channelCount: 1, activeChannel: 'mix', muted: this.state?.muted ?? false, volume: this.state?.volume ?? 1 })
 
@@ -151,10 +152,12 @@ export class MediaPlayer {
         this._videoRenderer = new VideoRenderer(document.createElement('canvas'), this.track.offsetSec)
       }
       await this._videoRenderer.loadAudioOnly(mediaUrl)
+        .then(() => { console.log(`[media] loaded audio: ${file.name}`) })
         .catch((err: unknown) => this._callbacks.onError?.(`Audio renderer: ${String(err)}`))
     } else if (this._videoRenderer) {
       void this._videoRenderer.load(mediaUrl)
         .then(() => {
+          console.log(`[media] loaded video: ${file.name}`)
           if (this.state && this._videoRenderer) {
             this._setState({ ...this.state, duration: this._videoRenderer.duration })
           }
@@ -168,6 +171,7 @@ export class MediaPlayer {
     const name = url.split('/').pop()?.split('?')[0] ?? 'media'
     const kind: 'audio' | 'video' = /\.(mp4|webm|mov|m4v|ogv|mkv)$/i.test(name) ? 'video' : 'audio'
 
+    console.log(`[media] loading ${kind} url: ${name}`)
     this.track = null
     this._setState({ mediaUrl: url, kind, filename: name, duration: 0, sampleRate: 0, channelCount: 1, activeChannel: 'mix', muted: this.state?.muted ?? false, volume: this.state?.volume ?? 1 })
 
@@ -179,10 +183,12 @@ export class MediaPlayer {
         this._videoRenderer = new VideoRenderer(document.createElement('canvas'), 0)
       }
       await this._videoRenderer.loadAudioOnly(url)
+        .then(() => { console.log(`[media] loaded audio url: ${name}`) })
         .catch((err: unknown) => this._callbacks.onError?.(`Audio renderer: ${String(err)}`))
     } else if (this._videoRenderer) {
       void this._videoRenderer.load(url)
         .then(() => {
+          console.log(`[media] loaded video url: ${name}`)
           if (this.state && this._videoRenderer) {
             this._setState({ ...this.state, duration: this._videoRenderer.duration })
           }
@@ -197,6 +203,7 @@ export class MediaPlayer {
    * and stream each chunk to the worker without accumulating PCM in main memory.
    */
   private async _streamAudio(url: string, decodeId: number): Promise<void> {
+    const name = this.state?.filename ?? url.split('/').pop() ?? 'media'
     const source = new UrlSource(url)
     const input = new Input({ formats: ALL_FORMATS, source })
     try {
@@ -204,6 +211,7 @@ export class MediaPlayer {
       if (!at || decodeId !== this._decodeId) return
       const sampleRate = await at.getSampleRate()
       if (decodeId !== this._decodeId) return
+      console.log(`[media] audio processing start: ${name} (${sampleRate} Hz)`)
       const sink = new AudioBufferSink(at)
       let duration = 0, channelCount = 0
       for await (const { buffer, timestamp } of sink.buffers(0)) {
@@ -218,10 +226,12 @@ export class MediaPlayer {
         this._broker.feedChunk(chunks, sampleRate, channelCount)
       }
       if (decodeId === this._decodeId) {
+        console.log(`[media] audio processing done: ${name} (${duration.toFixed(2)}s, ${channelCount}ch)`)
         this._broker.endStream(duration)
       }
     } catch (err) {
       if (decodeId === this._decodeId) {
+        console.error(`[media] audio processing error: ${name}`, err)
         this._callbacks.onError?.(`Failed to decode audio: ${String(err)}`)
       }
     } finally {

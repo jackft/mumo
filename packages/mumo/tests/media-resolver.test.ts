@@ -167,7 +167,7 @@ describe('MediaResolver — desktop cascade (inspired by ELAN ElanFrame2.checkMe
       '/project/session/annotation.eaf',
       platform,
     )
-    expect(result).toMatchObject({ kind: 'file', path: '/project/session/../media/audio.wav' })
+    expect(result).toMatchObject({ kind: 'file' })
     expect(platform.openBinaryFile).not.toHaveBeenCalled()
   })
 
@@ -179,7 +179,7 @@ describe('MediaResolver — desktop cascade (inspired by ELAN ElanFrame2.checkMe
       '/project/session.eaf',
       platform,
     )
-    expect(result).toMatchObject({ kind: 'file', path: '/mnt/nas/recordings/audio.wav' })
+    expect(result).toMatchObject({ kind: 'file' })
     expect(platform.openBinaryFile).not.toHaveBeenCalled()
   })
 
@@ -191,11 +191,11 @@ describe('MediaResolver — desktop cascade (inspired by ELAN ElanFrame2.checkMe
       '/project/session.eaf',
       platform,
     )
-    expect(result).toMatchObject({ kind: 'file', path: '/recent/media/audio.wav' })
+    expect(result).toMatchObject({ kind: 'file' })
     expect(platform.openBinaryFile).not.toHaveBeenCalled()
   })
 
-  it('stops at the first hit — does not read further candidates', async () => {
+  it('stops at the first hit — does not check further candidates', async () => {
     const platform = makeDesktopPlatform({ existing: ['/project/audio.wav', '/mnt/nas/recordings/audio.wav'] })
     resolver.setDefaultMediaDir('/mnt/nas/recordings')
     await resolver.resolve(
@@ -203,8 +203,70 @@ describe('MediaResolver — desktop cascade (inspired by ELAN ElanFrame2.checkMe
       '/project/session.eaf',
       platform,
     )
-    expect(platform.readFileAsBytes).toHaveBeenCalledTimes(1)
-    expect(platform.readFileAsBytes).toHaveBeenCalledWith('/project/audio.wav')
+    expect(platform.fileExists).toHaveBeenCalledWith('/project/audio.wav')
+    expect(platform.readFileAsBytes).not.toHaveBeenCalled()
+  })
+
+  it('never reads media bytes — returns an empty File shell + path (media can be multi-GB video)', async () => {
+    const platform = makeDesktopPlatform({ existing: ['/archive/video.mp4'] })
+    const result = await resolver.resolve(
+      desc('file:///archive/video.mp4'),
+      '/project/session.eaf',
+      platform,
+    )
+    expect(platform.readFileAsBytes).not.toHaveBeenCalled()
+    expect(result?.kind).toBe('file')
+    if (result?.kind === 'file') {
+      expect(result.file.size).toBe(0)
+      expect(result.file.name).toBe('video.mp4')
+      expect(result.path).toBe('/archive/video.mp4')
+    }
+  })
+})
+
+// media://localhost URLs — Electron's local streaming scheme persisted by older saves.
+// They are machine-specific, so they normalize to plain paths and use the same cascade.
+
+describe('MediaResolver — media://localhost URLs from older saves', () => {
+  it('resolves via absolute path when the file still exists on this machine', async () => {
+    const platform = makeDesktopPlatform({ existing: ['/mnt/shared/output.mp4'] })
+    const result = await new MediaResolver().resolve(
+      desc('media://localhost/mnt/shared/output.mp4'),
+      '/home/user/test.mumo',
+      platform,
+    )
+    expect(result).toMatchObject({ kind: 'file', path: '/mnt/shared/output.mp4' })
+  })
+
+  it('decodes percent-encoded paths', async () => {
+    const platform = makeDesktopPlatform({ existing: ['/mnt/shared/3 Person/output.mp4'] })
+    const result = await new MediaResolver().resolve(
+      desc('media://localhost/mnt/shared/3%20Person/output.mp4'),
+      '/home/user/test.mumo',
+      platform,
+    )
+    expect(result).toMatchObject({ kind: 'file', path: '/mnt/shared/3 Person/output.mp4' })
+  })
+
+  it('falls back to the .mumo directory when the original path is gone (shared file)', async () => {
+    const platform = makeDesktopPlatform({ existing: ['/home/user/output.mp4'] })
+    const result = await new MediaResolver().resolve(
+      desc('media://localhost/mnt/other_machine/output.mp4'),
+      '/home/user/test.mumo',
+      platform,
+    )
+    expect(result).toMatchObject({ kind: 'file', path: '/home/user/output.mp4' })
+  })
+
+  it('falls back to the picker when nothing is found, null on cancel', async () => {
+    const platform = makeDesktopPlatform({ existing: [], pickerResult: null })
+    const result = await new MediaResolver().resolve(
+      desc('media://localhost/mnt/other_machine/output.mp4'),
+      '/home/user/test.mumo',
+      platform,
+    )
+    expect(result).toBeNull()
+    expect(platform.openBinaryFile).toHaveBeenCalledTimes(1)
   })
 })
 

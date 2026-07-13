@@ -25,7 +25,8 @@ export interface MumoImageEntry {
 }
 
 export interface MumoSpectrogramEntry {
-  path: string
+  /** Absent in new files; present in old files that stored a PNG in the archive. */
+  path?: string
   mediaPath: string
   mediaHash: string
   params: Record<string, unknown>

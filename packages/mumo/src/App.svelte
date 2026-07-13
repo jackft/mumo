@@ -10,12 +10,12 @@
   import type { DocumentJSON, ImageProvenance, PMNode, TrackSet, ControllerMeta, SymbolDef } from '@mumo/core'
   import { CollabManager } from './collab.js'
   import type { CollabMode, CollabStatus, CollabIdentity, AwarenessLike, PeerPatternSel } from './collab.js'
-  import { parseXML, eafTomumo, emitEAF, emitETF, parseETF, parseMMEAF, parseMMETF, emitMMEAF, emitMMETF, emitVTT, emitTXT, emitCSV, packMumo, unpackMumo } from '@mumo/serialization'
+  import { parseXML, eafTomumo, emitEAF, emitETF, parseETF, parseMMEAF, parseMMETF, emitMMEAF, emitMMETF, emitVTT, emitTXT, emitCSV, packMumo, unpackMumo, relativeMediaUrl } from '@mumo/serialization'
   import { MediaResolver } from './media-resolver.js'
   import type { MediaResolveResult } from './media-resolver.js'
   import appIconUrl from './assets/mumo.svg'
   import magnetIconUrl from './assets/magnet.svg'
-  import type { EAFDocument, MumoImageInput, MumoSpectrogramInput, MumoTrackBufferInput } from '@mumo/serialization'
+  import type { EAFDocument, EAFMediaDescriptor, MumoImageInput, MumoSpectrogramInput, MumoTrackBufferInput } from '@mumo/serialization'
   import { FileController } from './fileController.js'
   import type { ImportResult } from './formats.js'
   import { WebPlatformIO, guessMime } from './platform.js'
@@ -33,7 +33,7 @@
   import { applyInsertionHeuristic, healPromotedBlock, updateChildAnnotations, timeAnchor, formatGapDuration } from './docOps.js'
 
   import type { EmbedConfig } from './embed.js'
-  import { defaultBindings, mergeBindings, normalizeKeyEvent } from './keybindings.js'
+  import { defaultBindings, formatCombo, mergeBindings, normalizeKeyEvent } from './keybindings.js'
   import type { ActionId, KeyBindings } from './keybindings.js'
   import CollectionView from './CollectionView.svelte'
   import Panel from './toolpanel/Panel.svelte'
@@ -67,7 +67,7 @@
   import EditTierDlg from './dialogs/EditTierDlg.svelte'
   import UttTiersDlg from './dialogs/UttTiersDlg.svelte'
   import type { SlotFillMode } from './patternTypes.js'
-  import type { MediaState, SpectrogramSettings, SpectrogramTile, VadSegment, WaveformBins } from '@mumo/media-player'
+  import type { MediaState, SpectrogramSettings, VadSegment, WaveformBins } from '@mumo/media-player'
   import { SPEC_PRESETS, DEFAULT_SPEC_SETTINGS, MultiMediaPlayer, VideoTileLayout, LinkedMediaDlg, computeEnergyVad } from '@mumo/media-player'
   import type { MediaPlayer } from '@mumo/media-player'
   import type { SignalChannel, TickMark, TierIntervalOverlay, ArcItem, MotionCurve } from '@mumo/timeline'
@@ -370,6 +370,7 @@
     el.addEventListener('animationend', () => el.remove())
   }
   let loopRegion    = $state<{ start: number; end: number } | null>(null)
+  let _soloPlayerIdx = $state<number | null>(null)
   $effect(() => {
     const ids = loopRegion ? _blockIdsForTimeRange(loopRegion.start, loopRegion.end) : []
     editorRef?.setLoopIds(ids)
@@ -1206,6 +1207,8 @@
   let hiddenLaneIds    = $state<Set<string>>(new Set())
   let linkedMediaOpen  = $state(false)
   let linkedPlayers    = $state<readonly MediaPlayer[]>([])
+  let failedMedia      = $state<Array<{ mediaUrl: string; name: string; offsetSec: number }>>([])
+
 
   type EafPassthrough = {
     media: import('@mumo/serialization').EAFMediaDescriptor[]
@@ -1224,7 +1227,14 @@
       offsetSec: p.track?.offsetSec ?? 0,
     }))
 
-    if (!eafPassthrough) return loaded
+    const missing: E[] = failedMedia.map(m => ({
+      kind: 'missing' as const,
+      id: m.mediaUrl,
+      name: m.name,
+      offsetSec: m.offsetSec,
+    }))
+
+    if (!eafPassthrough) return [...loaded, ...missing]
 
     const loadedPaths  = new Set(linkedPlayers.map(p => p.track?.path).filter(Boolean) as string[])
     const loadedHashes = new Set(linkedPlayers.map(p => p.track?.mediaHash).filter(Boolean) as string[])
@@ -1250,7 +1260,7 @@
         offsetSec: (desc.timeOrigin ?? 0) / 1000,
       }))
 
-    return [...loaded, ...unloaded]
+    return [...loaded, ...unloaded, ...missing]
   })())
   let _knownPlayerIds  = new Set<string>()
 
@@ -1487,6 +1497,27 @@
   function setSpeed(s: number) { mediaSpeed = s; multiPlayer.setSpeed(s) }
   function stepSpeedUp()   { const i = SPEED_STEPS.findIndex(s => s > mediaSpeed); if (i >= 0) setSpeed(SPEED_STEPS[i]!) }
   function stepSpeedDown() { const arr = [...SPEED_STEPS].reverse(); const s = arr.find(s => s < mediaSpeed); if (s) setSpeed(s) }
+
+  function _applySolo(idx: number | null) {
+    _soloPlayerIdx = idx
+    const players = multiPlayer.players
+    if (idx === null) {
+      multiPlayer.setAllMuted(false)
+    } else {
+      for (let i = 0; i < players.length; i++) multiPlayer.setPlayerMuted(players[i]!.id, i !== idx)
+    }
+  }
+  function soloNextTrack() {
+    const n = multiPlayer.players.length
+    if (n === 0) return
+    _applySolo(_soloPlayerIdx === null ? 0 : (_soloPlayerIdx + 1) % n)
+  }
+  function soloPrevTrack() {
+    const n = multiPlayer.players.length
+    if (n === 0) return
+    _applySolo(_soloPlayerIdx === null ? n - 1 : (_soloPlayerIdx - 1 + n) % n)
+  }
+  function unmuteAllTracks() { _applySolo(null) }
 
   function laneMenuDepth(laneId: string, depth?: number): number {
     if (timelineData.lanes.find(l => l.id === laneId)?.type === 'participant') return 0
@@ -2212,6 +2243,7 @@ let patternSchemaDlgOpen = $state(false)
 
   /** Shared .mumo load: images, doc + store, tracks, linked media, spectrogram overviews. */
   async function _loadMumoBytes(bytes: Uint8Array, filePath: string | null = null): Promise<void> {
+    failedMedia = []
     for (const p of multiPlayer.players.slice(1)) multiPlayer.removeTrack(p.id)
     const unpacked = unpackMumo(bytes)
     for (const url of imageRegistry.values()) URL.revokeObjectURL(url)
@@ -2244,7 +2276,14 @@ let patternSchemaDlgOpen = $state(false)
       const tryLoadDesc = async (desc: typeof parsed.media[number], primary: boolean) => {
         try {
           const result = await mediaResolver.resolve(desc, filePath, platform)
-          if (!result) return
+          if (!result) {
+            failedMedia = [...failedMedia, {
+              mediaUrl: desc.mediaUrl,
+              name: desc.mediaUrl.replace(/\\/g, '/').split('/').pop() ?? desc.mediaUrl,
+              offsetSec: (desc.timeOrigin ?? 0) / 1000,
+            }]
+            return
+          }
           if (primary) {
             if (result.kind === 'url') await multiPlayer.loadPrimaryUrl(result.url)
             else await loadMediaFile(result.file, result.path)
@@ -2264,9 +2303,20 @@ let patternSchemaDlgOpen = $state(false)
       const [primaryPath, ...extraPaths] = unpacked.manifest.mediaPaths
       const tryLoad = async (mediaPath: string, primary: boolean) => {
         try {
-          const f = new File([], mediaPath.split(/[/\\]/).pop() ?? 'media', { type: guessMime(mediaPath) })
-          if (primary) await loadMediaFile(f, mediaPath)
-          else await multiPlayer.addTrack(f, mediaPath)
+          const desc: EAFMediaDescriptor = { mediaUrl: mediaPath, mimeType: guessMime(mediaPath.split(/[/\\]/).pop() ?? '') }
+          const result = await mediaResolver.resolve(desc, filePath, platform)
+          if (!result) {
+            const name = mediaPath.replace(/\\/g, '/').split('/').pop() ?? mediaPath
+            failedMedia = [...failedMedia, { mediaUrl: mediaPath, name, offsetSec: 0 }]
+            return
+          }
+          if (primary) {
+            if (result.kind === 'url') await multiPlayer.loadPrimaryUrl(result.url)
+            else await loadMediaFile(result.file, result.path)
+          } else {
+            if (result.kind === 'url') await multiPlayer.addTrackUrl(result.url)
+            else await multiPlayer.addTrack(result.file, result.path)
+          }
         } catch { /* media file may have moved */ }
       }
       const loads: Promise<void>[] = []
@@ -2274,22 +2324,7 @@ let patternSchemaDlgOpen = $state(false)
       for (const p of extraPaths) loads.push(tryLoad(p, false))
       await Promise.all(loads)
     }
-    for (const entry of unpacked.manifest.spectrograms) {
-      const data = unpacked.spectrograms.get(entry.path)
-      if (!data) continue
-      const channelIndex = (entry.params['channelIndex'] as number | undefined) ?? 0
-      const player = multiPlayer.players.find(p =>
-        (entry.mediaHash && p.track?.mediaHash === entry.mediaHash) ||
-        (entry.mediaPath && (p.track?.path === entry.mediaPath || p.state?.filename === entry.mediaPath))
-      )
-      if (!player) continue
-      const channelId = `${player.id}:spectrogram:ch${channelIndex}`
-      const timeStart = (entry.params['timeStart'] as number | undefined) ?? 0
-      const timeEnd   = (entry.params['timeEnd']   as number | undefined) ?? 0
-      void _pngBytesToTile(data as Uint8Array<ArrayBuffer>, timeStart, timeEnd).then(tile => {
-        if (tile) timelineRef?.setSpectrogramOverview(channelId, tile)
-      })
-    }
+    if (failedMedia.length > 0) linkedMediaOpen = true
   }
 
   filecontroller
@@ -4036,43 +4071,6 @@ let patternSchemaDlgOpen = $state(false)
     filecontroller.downloadExport('mmeaf', { docJSON: (editorRef?.liveDoc() ?? currentDoc).toJSON(), store, tokenStore, opts })
   }
 
-  function _tileToUint8Array(tile: SpectrogramTile): Promise<Uint8Array> {
-    const canvas = Object.assign(document.createElement('canvas'), { width: tile.width, height: tile.height })
-    let rgba: Uint8ClampedArray
-    if (tile.rawDb) {
-      // Render rawDb with a reasonable fixed LUT for archiving
-      const { SPEC_DB_FLOOR: F, SPEC_DB_RANGE: R } = { SPEC_DB_FLOOR: -160, SPEC_DB_RANGE: 160 }
-      const dynRange = spectrogramSettings.dynamicRangeDb
-      // Use simple linear greyscale for archival PNG (avoid inferno dependency here)
-      rgba = new Uint8ClampedArray(tile.rawDb.length * 4)
-      for (let i = 0; i < tile.rawDb.length; i++) {
-        const dB = tile.rawDb[i]! / 255 * R + F
-        const v  = Math.max(0, Math.min(255, Math.round((dB + 80) / dynRange * 255)))
-        rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = v; rgba[i * 4 + 3] = 255
-      }
-    } else {
-      rgba = new Uint8ClampedArray(tile.pixels!)
-    }
-    canvas.getContext('2d')!.putImageData(new ImageData(rgba as unknown as Uint8ClampedArray<ArrayBuffer>, tile.width, tile.height), 0, 0)
-    return new Promise((resolve, reject) => {
-      canvas.toBlob(blob => {
-        if (!blob) return reject(new Error('canvas.toBlob failed'))
-        blob.arrayBuffer().then(buf => resolve(new Uint8Array(buf)))
-      }, 'image/png')
-    })
-  }
-
-  async function _pngBytesToTile(data: Uint8Array<ArrayBuffer>, timeStart: number, timeEnd: number): Promise<SpectrogramTile | null> {
-    const bitmap = await createImageBitmap(new Blob([data], { type: 'image/png' }))
-    const { width, height } = bitmap
-    if (!width || !height) { bitmap.close(); return null }
-    const canvas = Object.assign(document.createElement('canvas'), { width, height })
-    canvas.getContext('2d')!.drawImage(bitmap, 0, 0)
-    const imageData = canvas.getContext('2d')!.getImageData(0, 0, width, height)
-    bitmap.close()
-    return { tileIndex: -1, pixels: imageData.data, width, height, timeStart, timeEnd }
-  }
-
   function loadMumo() { void filecontroller.openFile(['mumo']) }
 
   async function _openMumoPath(filePath: string, seekFragId?: string, seekTime?: number) {
@@ -4127,13 +4125,24 @@ let patternSchemaDlgOpen = $state(false)
 
     const [primaryPlayer, ...secondaryPlayers] = multiPlayer.players
     const primaryTrack = primaryPlayer?.track
+    // RELATIVE_MEDIA_URL makes the file portable: on another machine the absolute
+    // path fails, but the cascade finds media kept in the same place relative to the .mumo.
+    const savePath = filecontroller.currentFilePath
+    const relFor = (mediaPath: string) => (savePath ? relativeMediaUrl(mediaPath, savePath) : null)
     const additionalMedia = secondaryPlayers.flatMap(p => {
       const t = p.track
       if (!t?.path) return []
-      return [{ mediaUrl: t.path, ...(t.offsetSec ? { timeOrigin: Math.round(t.offsetSec * 1000) } : {}) }]
+      const rel = relFor(t.path)
+      return [{
+        mediaUrl: t.path,
+        ...(rel ? { relativeMediaUrl: rel } : {}),
+        ...(t.offsetSec ? { timeOrigin: Math.round(t.offsetSec * 1000) } : {}),
+      }]
     })
+    const primaryRel = primaryTrack?.path ? relFor(primaryTrack.path) : null
     const mmeaf = emitMMEAF(docJSON, store, {
       ...(primaryTrack?.path ? { mediaUrl: primaryTrack.path } : {}),
+      ...(primaryRel ? { relativeMediaUrl: primaryRel } : {}),
       ...(primaryTrack?.offsetSec ? { timeOrigin: Math.round(primaryTrack.offsetSec * 1000) } : {}),
       ...(additionalMedia.length ? { additionalMedia } : {}),
     }, tokenStore)
@@ -4167,18 +4176,15 @@ let patternSchemaDlgOpen = $state(false)
 
     await Promise.all(pending)
 
-    // Collect spectrogram overviews
+    // Collect spectrogram params (no image data — recomputed on load)
     const spectrogramInputs: MumoSpectrogramInput[] = []
     const overviews = timelineRef?.getSpectrogramOverviews() ?? new Map()
-    await Promise.all([...overviews.entries()].map(async ([channelId, tile]) => {
+    for (const [channelId, tile] of overviews.entries()) {
       const chMatch = channelId.match(/:spectrogram:ch(\d+)$/)
       const channelIndex = chMatch ? parseInt(chMatch[1]!) : 0
       const playerId = channelId.replace(/:spectrogram:ch\d+$/, '')
       const player = multiPlayer.players.find(p => p.id === playerId)
-      const data = await _tileToUint8Array(tile)
       spectrogramInputs.push({
-        filename: `ch${channelIndex}_${playerId.replace(/[^a-z0-9]/gi, '_')}.png`,
-        data,
         mediaPath: player?.track?.path ?? player?.state?.filename ?? '',
         mediaHash: player?.track?.mediaHash ?? '',
         params: {
@@ -4188,7 +4194,7 @@ let patternSchemaDlgOpen = $state(false)
           ...spectrogramSettings,
         },
       })
-    }))
+    }
 
     const mediaPaths = multiPlayer.players.map(p => p.track?.path ?? '').filter(Boolean)
 
@@ -4690,8 +4696,11 @@ let patternSchemaDlgOpen = $state(false)
     }
   }
   if (matchKey(e, 'save'))              { e.preventDefault(); void (filecontroller.currentFilename ? saveMumo() : saveMumoAs()) }
-  if (matchKey(e, 'speed_up'))          { e.preventDefault(); stepSpeedUp() }
-  if (matchKey(e, 'speed_down'))        { e.preventDefault(); stepSpeedDown() }
+  if (matchKey(e, 'speed_up')   || (e.ctrlKey && e.key === '+')) { e.preventDefault(); stepSpeedUp() }
+  if (matchKey(e, 'speed_down') || (e.ctrlKey && e.key === '-')) { e.preventDefault(); stepSpeedDown() }
+  if (matchKey(e, 'solo_next_track'))   { e.preventDefault(); soloNextTrack(); return }
+  if (matchKey(e, 'solo_prev_track'))   { e.preventDefault(); soloPrevTrack(); return }
+  if (matchKey(e, 'unmute_all_tracks')) { e.preventDefault(); unmuteAllTracks(); return }
   if (matchKey(e, 'play_pause_global')) { e.preventDefault(); togglePlay(); return }
   if (matchKey(e, 'loop_play'))         { e.preventDefault(); toggleLoopPlay(); return }
   if (matchKey(e, 'stop_loop_play'))    { e.preventDefault(); multiPlayer.pause(); loopRegion = null; timelineRef?.setLoopRegion(null); multiPlayer.setLoop(null); return }
@@ -5099,6 +5108,10 @@ let patternSchemaDlgOpen = $state(false)
           <div class="mb-help-row"><kbd>End</kbd><span>Go to end</span></div>
           <div class="mb-help-row"><kbd>\</kbd><span>Arm / disarm loop on selection or bar</span></div>
           <div class="mb-help-row"><kbd>Ctrl+\</kbd><span>Stop looping play (pause + disarm)</span></div>
+          <div class="mb-help-row"><kbd>Ctrl+=</kbd> <kbd>Ctrl++</kbd><span>Speed up</span></div>
+          <div class="mb-help-row"><kbd>Ctrl+-</kbd><span>Slow down</span></div>
+          <div class="mb-help-row"><kbd>Ctrl+Shift+↓</kbd> <kbd>Ctrl+Shift+↑</kbd><span>Solo next / prev audio track</span></div>
+          <div class="mb-help-row"><kbd>Ctrl+Shift+U</kbd><span>Unmute all audio tracks</span></div>
           <div class="mb-help-row"><kbd>S</kbd><span>Cycle snap mode (all / vad / waveform / spectrogram / off)</span></div>
           <hr class="mb-sep" />
           <span class="mb-help-section">Editing</span>
@@ -5160,6 +5173,14 @@ let patternSchemaDlgOpen = $state(false)
       onClose={() => linkedMediaOpen = false}
       onLink={() => void linkMediaFile()}
       onLoad={async (url) => {
+        const failed = failedMedia.find(m => m.mediaUrl === url)
+        if (failed) {
+          const result = await platform.openBinaryFile(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'], `Locate ${failed.name}`)
+          if (!result) return
+          await multiPlayer.addTrack(result.file, result.path, failed.offsetSec)
+          failedMedia = failedMedia.filter(m => m.mediaUrl !== url)
+          return
+        }
         const stored = eafPassthrough?.media.find(d => d.mediaUrl === url)
         const offsetSec = (stored?.timeOrigin ?? 0) / 1000
         const result = await platform.openBinaryFile(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'], 'Media files')
@@ -5173,6 +5194,8 @@ let patternSchemaDlgOpen = $state(false)
           const updated = new SvelteMap(eafSlotAssignments)
           for (const [url, pid] of updated) if (pid === id) updated.delete(url)
           eafSlotAssignments = updated
+        } else if (failedMedia.some(m => m.mediaUrl === id)) {
+          failedMedia = failedMedia.filter(m => m.mediaUrl !== id)
         } else if (eafPassthrough) {
           eafPassthrough = { ...eafPassthrough, media: eafPassthrough.media.filter(d => d.mediaUrl !== id) }
         }
@@ -5231,7 +5254,7 @@ let patternSchemaDlgOpen = $state(false)
         </div>
         <div class="ech-mode-group">
           {#if loopRegion && _isPlaying}
-            <span class="ech-loop-tip">⇧Space to stop loop</span>
+            <span class="ech-loop-tip">{formatCombo(keyBindings.loop_play)} to stop loop</span>
           {/if}
           <div class="ech-mode-switch" class:ech-mode-jiggle={_modeJiggle} onanimationend={() => { _modeJiggle = false }} title="Esc → CODE  •  e → EDIT">
             <span class="ech-mode-label">text mode:</span>
@@ -5559,7 +5582,7 @@ let patternSchemaDlgOpen = $state(false)
       <span class="status-fps">{timelineFps} fps</span>
     {/if}
     {#if loopRegion && _isPlaying}
-      <span class="status-loop-tip">Ctrl+⇧Space to stop loop</span>
+      <span class="status-loop-tip">{formatCombo(keyBindings.loop_play)} to stop loop</span>
     {/if}
     <span class="status-right">
       {#if tlHz !== null}
