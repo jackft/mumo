@@ -26,6 +26,9 @@ export type ActionId =
   | 'toggle_transcript'
   | 'toggle_glosses'
   | 'toggle_utt_tiers'
+  | 'solo_next_track'
+  | 'solo_prev_track'
+  | 'unmute_all_tracks'
 
 export interface ActionDef {
   id: ActionId
@@ -68,6 +71,10 @@ export const ACTION_DEFS: ActionDef[] = [
   { id: 'toggle_transcript', label: 'Toggle transcript panel',            group: 'View',       defaultBinding: '' },
   { id: 'toggle_glosses',    label: 'Toggle glosses',                     group: 'View',       defaultBinding: '' },
   { id: 'toggle_utt_tiers',  label: 'Toggle utterance tier names',        group: 'View',       defaultBinding: '' },
+  // Audio mix
+  { id: 'solo_next_track',   label: 'Solo next audio track',              group: 'Audio',      defaultBinding: 'ctrl+shift+arrowdown' },
+  { id: 'solo_prev_track',   label: 'Solo previous audio track',          group: 'Audio',      defaultBinding: 'ctrl+shift+arrowup' },
+  { id: 'unmute_all_tracks', label: 'Unmute all audio tracks',            group: 'Audio',      defaultBinding: 'ctrl+shift+u' },
 ]
 
 export type KeyBindings = Record<ActionId, string>

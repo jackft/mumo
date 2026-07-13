@@ -5,7 +5,6 @@ export interface MumoUnpackResult {
   manifest: MumoManifest
   mmeaf: string
   images: Map<string, Uint8Array>
-  spectrograms: Map<string, Uint8Array>
   /** Serialized JSON string for `TrackSetStore.loadJSON()`, or null if absent. */
   trackSetsJSON: string | null
   /** Detection buffers keyed by `"${trackSetId}/${trackId}"`. */
@@ -33,12 +32,6 @@ export function unpackMumo(data: Uint8Array): MumoUnpackResult {
     if (raw) images.set(entry.path, raw)
   }
 
-  const spectrograms = new Map<string, Uint8Array>()
-  for (const entry of manifest.spectrograms) {
-    const raw = files[entry.path]
-    if (raw) spectrograms.set(entry.path, raw)
-  }
-
   let trackSetsJSON: string | null = null
   if (manifest.trackSets) {
     const raw = files[manifest.trackSets]
@@ -59,5 +52,5 @@ export function unpackMumo(data: Uint8Array): MumoUnpackResult {
     if (raw) cvFiles.set(entry.path, raw)
   }
 
-  return { manifest, mmeaf, images, spectrograms, trackSetsJSON, trackBuffers, cvEntries, cvFiles }
+  return { manifest, mmeaf, images, trackSetsJSON, trackBuffers, cvEntries, cvFiles }
 }

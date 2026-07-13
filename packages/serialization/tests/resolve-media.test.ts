@@ -6,7 +6,7 @@
  * Psycholinguistics). See reference_implementations/elan-7.1.
  */
 import { describe, it, expect } from 'vitest'
-import { mediaCandidatePaths } from '../src/resolve-media.js'
+import { mediaCandidatePaths, relativeMediaUrl } from '../src/resolve-media.js'
 import type { EAFMediaDescriptor } from '../src/types.js'
 
 function desc(mediaUrl: string, relativeUrl?: string): EAFMediaDescriptor {
@@ -165,5 +165,50 @@ describe('mediaCandidatePaths — edge cases', () => {
     expect(candidates).toContain('/dir1/audio.wav')
     expect(candidates).toContain('/dir2/audio.wav')
     expect(candidates).toContain('/dir3/audio.wav')
+  })
+})
+
+// relativeMediaUrl — the inverse operation, written into RELATIVE_MEDIA_URL on save
+// so the cascade's step 3 can find media on machines where the absolute path differs.
+
+describe('relativeMediaUrl', () => {
+  it('same directory → ./filename', () => {
+    expect(relativeMediaUrl('/data/project/audio.wav', '/data/project/session.mumo'))
+      .toBe('./audio.wav')
+  })
+
+  it('subdirectory → ./sub/filename', () => {
+    expect(relativeMediaUrl('/data/project/media/audio.wav', '/data/project/session.mumo'))
+      .toBe('./media/audio.wav')
+  })
+
+  it('sibling directory → ../Media/filename', () => {
+    expect(relativeMediaUrl('/data/Media/audio.wav', '/data/project/session.mumo'))
+      .toBe('../Media/audio.wav')
+  })
+
+  it('deeper ancestor → ../../filename', () => {
+    expect(relativeMediaUrl('/data/audio.wav', '/data/a/b/session.mumo'))
+      .toBe('../../audio.wav')
+  })
+
+  it('round-trips through the cascade (resolves back to the media path)', () => {
+    const rel = relativeMediaUrl('/data/Media/audio.wav', '/data/project/session.mumo')!
+    const resolved = new URL(rel, 'file:///data/project/session.mumo').pathname
+    expect(resolved).toBe('/data/Media/audio.wav')
+  })
+
+  it('handles Windows paths with backslashes', () => {
+    expect(relativeMediaUrl('C:\\data\\Media\\audio.wav', 'C:\\data\\project\\session.mumo'))
+      .toBe('../Media/audio.wav')
+  })
+
+  it('returns null for different Windows drives', () => {
+    expect(relativeMediaUrl('D:/media/audio.wav', 'C:/project/session.mumo')).toBeNull()
+  })
+
+  it('returns null when either path is not absolute', () => {
+    expect(relativeMediaUrl('audio.wav', '/project/session.mumo')).toBeNull()
+    expect(relativeMediaUrl('/media/audio.wav', 'session.mumo')).toBeNull()
   })
 })
