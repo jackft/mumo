@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "packageManager": "pnpm@10.33.0",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "clean": "rm -rf packages/*/dist packages/*/dist-lib packages/*/out packages/audio-analysis-wasm/pkg",
