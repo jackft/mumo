@@ -398,6 +398,9 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
     const uttRef = ga(mmEl, 'annotation_ref')
     if (uttRef) annRefAnchors.set(uttRef, { type: 'utterance', uttId: blockId })
 
+    const contOf = ga(mmEl, 'continuation_of')
+    if (contOf) block.attrs['continuationOfId'] = contOf
+
     let offset = 0
     for (const tok of ((mmEl['mm:t'] ?? []) as Rec[])) {
       const kind       = (ga(tok, 'type') ?? 'word') as TokenRecord['kind']
@@ -432,6 +435,8 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
         const charOffset = Number(ga(el, 'char_offset') ?? '0')
         if (type === 'overlap_bracket') {
           marks.push({ offset: charOffset, node: { type: 'overlap_bracket', attrs: { id: ga(el, 'group_id') ?? '', kind: ga(el, 'kind') ?? 'start' } } })
+        } else if (type === 'anchor') {
+          marks.push({ offset: charOffset, node: { type: 'anchor', attrs: { id: ga(el, 'id') ?? '', delimiter: ga(el, 'delimiter') ?? '*', kind: ga(el, 'kind') ?? 'start' } } })
         } else if (type === 'inline_ann') {
           marks.push({ offset: charOffset, node: { type: 'inline_ann', attrs: { id: ga(el, 'id') ?? '', value: ga(el, 'value') ?? '', vizId: ga(el, 'viz_id') || null } } })
         }
@@ -497,6 +502,8 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
       const charOffset = Number(ga(mark, 'char_offset') ?? '0')
       if (markType === 'overlap_bracket') {
         inlines.push({ charOffset, node: { type: 'overlap_bracket', attrs: { id: ga(mark, 'group_id') ?? '', kind: ga(mark, 'kind') ?? 'start' } } })
+      } else if (markType === 'anchor') {
+        inlines.push({ charOffset, node: { type: 'anchor', attrs: { id: ga(mark, 'id') ?? '', delimiter: ga(mark, 'delimiter') ?? '*', kind: ga(mark, 'kind') ?? 'start' } } })
       } else if (markType === 'inline_ann') {
         inlines.push({ charOffset, node: { type: 'inline_ann', attrs: { id: ga(mark, 'id') ?? '', value: ga(mark, 'value') ?? '', vizId: ga(mark, 'viz_id') || null } } })
       }
@@ -620,7 +627,8 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
       return {
         id:         ga(slotEl, 'id') ?? newId(),
         name:       ga(slotEl, 'name') ?? '',
-        anchorKind: (ga(slotEl, 'anchor_kind') ?? 'span') as 'span' | 'utterance' | 'pattern' | 'any',
+        anchorKind: (() => { const raw = ga(slotEl, 'anchor_kind') ?? 'textlet'; return (raw === 'span' ? 'textlet' : raw) as 'textlet' | 'utterance' | 'tier' | 'pattern' | 'any' })(),
+        ...(ga(slotEl, 'tier_id')             ? { tierId: ga(slotEl, 'tier_id')! }    : {}),
         ...(ga(slotEl, 'required')  === 'true' ? { required:  true }                  : {}),
         ...(ga(slotEl, 'variadic')  === 'true' ? { variadic:  true }                  : {}),
         ...(ga(slotEl, 'label')               ? { label: ga(slotEl, 'label')! }       : {}),
@@ -787,6 +795,7 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
       const trackSetId = ga(el, 'track_set_id')
       const trackId    = ga(el, 'track_id')
       if (trackSetId && trackId) ext.trackRef = { trackSetId, trackId }
+      if (ga(el, 'is_utt_tier') === 'true') ext.isUttTier = true
       if (Object.keys(ext).length > 0) tierExtMap.set(key, ext)
     }
   }

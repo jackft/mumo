@@ -70,14 +70,14 @@ class MumoDoc(pympi.Elan.Eaf):
         aligned, ref, _, _ = self.tiers[tier_name]
         return [AnnotationView(aid, self) for aid in (*aligned, *ref)]
 
-    # -- Frame queries -----------------------------------------------------
+    # -- Frame / Pattern queries -------------------------------------------
 
     def frame(self, fid: str) -> FrameView | None:
-        f = self._mumo['frames'].get(fid)
+        f = self._mumo['patterns'].get(fid)
         return FrameView(f, self) if f else None
 
     def all_frames(self) -> list[FrameView]:
-        return [FrameView(f, self) for f in self._mumo['frames'].values()]
+        return [FrameView(f, self) for f in self._mumo['patterns'].values()]
 
     # -- Textlet queries ---------------------------------------------------
 
@@ -91,7 +91,7 @@ class MumoDoc(pympi.Elan.Eaf):
     def frames_for_textlet(self, textlet_id: str) -> list[FrameView]:
         """All frames that have a slot referencing this textlet."""
         result = []
-        for frame in self._mumo['frames'].values():
+        for frame in self._mumo['patterns'].values():
             for slot in frame['slots']:
                 if slot.get('annotation_id') == textlet_id:
                     result.append(FrameView(frame, self))
@@ -117,9 +117,9 @@ class MumoDoc(pympi.Elan.Eaf):
                             schema: str | None = None) -> list[FrameView]:
         """Frames that have at least one slot whose time overlaps [start_s, end_s]."""
         result = []
-        for frame in self._mumo['frames'].values():
+        for frame in self._mumo['patterns'].values():
             if schema is not None:
-                fs = self._mumo['frame_schemas'].get(frame['schema_id'])
+                fs = self._mumo['pattern_schemas'].get(frame['schema_id'])
                 if fs is None or fs['name'] != schema:
                     continue
             fv = FrameView(frame, self)

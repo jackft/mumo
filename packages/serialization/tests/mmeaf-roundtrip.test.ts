@@ -266,7 +266,7 @@ describe('pattern schemas round-trip', () => {
       description: 'Other-initiated self-repair',
       slots: [
         {
-          id: newId(), name: 'trouble', anchorKind: 'span', required: true,
+          id: newId(), name: 'trouble', anchorKind: 'textlet', required: true,
           metrics: [{ id: newId(), name: 'type', type: 'categorical' }],
         },
         {
@@ -288,7 +288,7 @@ describe('pattern schemas round-trip', () => {
     expect(schema.slots).toHaveLength(2)
     expect(schema.slots[0]!.name).toBe('trouble')
     expect(schema.slots[0]!.required).toBe(true)
-    expect(schema.slots[0]!.anchorKind).toBe('span')
+    expect(schema.slots[0]!.anchorKind).toBe('textlet')
     expect(schema.slots[0]!.metrics[0]!.type).toBe('categorical')
     expect(schema.slots[1]!.name).toBe('initiation')
   })
@@ -311,7 +311,7 @@ describe('pattern schemas round-trip', () => {
     store.addVocabulary('Types', [], vocabId)
     store.addPatternSchema({
       name: 'Test', slots: [{
-        id: newId(), name: 'slot', anchorKind: 'span', metrics: [
+        id: newId(), name: 'slot', anchorKind: 'textlet', metrics: [
           { id: newId(), name: 'category', type: 'categorical', vocabularyId: vocabId },
         ],
       }],
@@ -368,7 +368,7 @@ describe('patterns round-trip', () => {
 
     store.addPatternSchema({
       name: 'Test', slots: [{
-        id: slotId, name: 's', anchorKind: 'span',
+        id: slotId, name: 's', anchorKind: 'textlet',
         metrics: [{ id: metricId, name: 'm', type: 'categorical' }],
       }],
     }, schemaId)
@@ -639,7 +639,7 @@ describe('MMEAF full store round-trip', () => {
       description: 'Other-initiated self-repair',
       slots: [
         {
-          id: newId(), name: 'trouble', anchorKind: 'span', required: true,
+          id: newId(), name: 'trouble', anchorKind: 'textlet', required: true,
           metrics: [{ id: newId(), name: 'type', type: 'categorical', vocabularyId: vocab.id }],
         },
         { id: newId(), name: 'initiation', anchorKind: 'utterance', metrics: [] },
@@ -734,7 +734,7 @@ describe('annotation_ref round-trip', () => {
       tokens: [{ kind: 'word', text: 'hello' }],
     }])
     const storedBlockId = (doc.content![0]!.attrs as Record<string, unknown>)['id'] as string
-    const ann = annotationStore.addAnnotation('slot-anchor', [{ type: 'utterance', uttId: storedBlockId }], { utteranceId: storedBlockId })
+    const ann = annotationStore.addAnnotation('utterance', [{ type: 'utterance', uttId: storedBlockId }], { utteranceId: storedBlockId })
 
     const xml    = emitMMEAF(doc, annotationStore, {}, tokenStore)
     const result = parseMMEAF(xml)
@@ -1136,7 +1136,7 @@ describe('suggestion round-trip', () => {
       slot: { id: slotId, schemaSlotId, annotationId, metrics: [{ schemaId: 'ms1', value: 'lexical' }] },
       pendingAnnotation: {
         id: pendingId,
-        type: 'slot-anchor',
+        type: 'utterance',
         anchors: [{ type: 'utterance', uttId }],
         features: { tierId: 'tier1', blockNodeId: uttId },
       },
@@ -1157,7 +1157,7 @@ describe('suggestion round-trip', () => {
       expect(sug.change.slot.metrics[0]).toMatchObject({ schemaId: 'ms1', value: 'lexical' })
       const pa = sug.change.pendingAnnotation!
       expect(pa.id).toBe(pendingId)
-      expect(pa.type).toBe('slot-anchor')
+      expect(pa.type).toBe('utterance')
       expect(pa.anchors).toHaveLength(1)
       expect(pa.anchors[0]).toMatchObject({ type: 'utterance', uttId })
       expect(pa.features['blockNodeId']).toBe(uttId)
@@ -1285,7 +1285,7 @@ describe('ID stability round-trip', () => {
       tokens: [{ kind: 'word', text: 'hello' }],
     }])
     const blockId = (doc.content![0]!.attrs as Record<string, unknown>)['id'] as string
-    annotationStore.addAnnotation('slot-anchor', [{ type: 'utterance', uttId: blockId }], { utteranceId: blockId })
+    annotationStore.addAnnotation('utterance', [{ type: 'utterance', uttId: blockId }], { utteranceId: blockId })
 
     const xml = emitMMEAF(doc, annotationStore, {}, tokenStore)
     const stripped = xml.replace(/<mm:id_map>[\s\S]*?<\/mm:id_map>/, '')
@@ -1293,7 +1293,7 @@ describe('ID stability round-trip', () => {
 
     // Fresh block ID minted, but the annotation's refs must be remapped to it
     const freshBlockId = (result.doc as { content: { attrs: Record<string, unknown> }[] }).content[0]!.attrs['id'] as string
-    const recovered = result.annotations.find(a => a.type === 'slot-anchor')
+    const recovered = result.annotations.find(a => a.type === 'utterance')
     expect(recovered).toBeDefined()
     expect(recovered!.features['utteranceId']).toBe(freshBlockId)
   })
@@ -1308,7 +1308,7 @@ describe('vocabulary ID stability round-trip', () => {
     store.addVocabulary('POS tags', [{ id: newId(), value: 'NOUN' }], vocabId)
     store.addPatternSchema({
       name: 'Test', slots: [{
-        id: newId(), name: 'slot', anchorKind: 'span', metrics: [
+        id: newId(), name: 'slot', anchorKind: 'textlet', metrics: [
           { id: newId(), name: 'pos', type: 'categorical', vocabularyId: vocabId },
         ],
       }],

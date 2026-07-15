@@ -126,6 +126,11 @@
       store.loadJSON(_initEmbedDoc)
     }
   }
+  // Origin for automatic derived-state writes (participant promotion, post-undo
+  // suggestion cleanup). Deliberately NOT in trackedOrigins so these transactions
+  // never create undo steps or clear the redo stack.
+  const DERIVED_ORIGIN = Symbol('derived')
+
   const undoManager = new Y.UndoManager(
     [yXmlFragment, ...store.getYTypes()],
     { trackedOrigins: new Set<unknown>([ySyncPluginKey, USER_ORIGIN]) },
@@ -421,6 +426,7 @@
   let showEndTime   = $state(false)
   let showGlosses      = $state(false)
   let showUttTierNames = $state(false)
+  let _tierColAutoShown = false  // tracks whether we've auto-shown due to multiple block tiers
   let suggestMode      = $state(false)
   let showGuides      = $state(false)
   let showLeftGuide   = $state(false)
@@ -634,10 +640,24 @@
     }
 
     participantInUse = inUse
-    for (const [label, meta] of toAdd) store.addParticipant(label, meta)
+    // Untracked origin: promotion is derived state. With USER_ORIGIN it becomes its own
+    // undo step, and worse — after undoing a participant's creation this microtask
+    // immediately re-adds it, clearing the redo stack and trapping undo in a loop.
+    if (toAdd.length > 0) {
+      ydoc.transact(() => {
+        for (const [label, meta] of toAdd) store.addParticipant(label, meta)
+      }, DERIVED_ORIGIN)
+    }
   }
 
   let _timelinePushPending = false
+  let _slotStylesQueued = false
+  // Declared here (not in the Media section below) because _afterStoreChange's
+  // microtask reads them via _resolveOverlayTiers/_flushSignals, and that microtask
+  // can fire at an await point during component init — before later declarations
+  // are initialized (Svelte 5 TDZ crash).
+  let mediaSignals    = $state<SignalChannel[]>([])
+  let hiddenSignalIds = $state<Set<string>>(new Set())
 
   function _afterStoreChange() {
     _recomputeWarnings()
@@ -654,6 +674,20 @@
     gutterRef?.refresh(editorRef?.liveDoc() ?? currentDoc)
     _pushGlosses()
     if (_appLoaded && embedConfig?.onChange) embedConfig.onChange(getDoc())
+  }
+
+  function _tryAutoShowTierCol() {
+    if (_tierColAutoShown) return
+    const participantBlockCount = new Map<string, number>()
+    for (const t of tiers) {
+      if (!t.isUttTier || !t.participant) continue
+      participantBlockCount.set(t.participant, (participantBlockCount.get(t.participant) ?? 0) + 1)
+    }
+    if ([...participantBlockCount.values()].some(n => n > 1)) {
+      _tierColAutoShown = true
+      showUttTierNames = true
+      setUttTiersVisible(true)
+    }
   }
 
   function syncStore() {
@@ -776,7 +810,7 @@
   })
   store.on('tier:update',         () => { _symbolicCoverage = null; _pushGlosses() })
   store.on('tier:remove',         () => { _symbolicCoverage = null })
-  store.on('tiers:changed',       () => { tiers = store.allTiersOrdered(); _afterStoreChange() })
+  store.on('tiers:changed',       () => { tiers = store.allTiersOrdered(); _afterStoreChange(); _tryAutoShowTierCol() })
   store.on('annotations:changed', () => { annotations = store.allAnnotations(); _afterStoreChange() })
   store.on('suggestions:changed', _afterStoreChange)
 
@@ -863,12 +897,17 @@
         return true
       })
     }
-    for (const sug of store.allSuggestions()) {
-      if (sug.change.type === 'pm:replace' && !docSugIds.has(sug.id))
-        store.rejectSuggestion(sug.id)
-      if ((sug.change.type === 'utt:set-time' || sug.change.type === 'utt:set-participant') && !docUttIds.has(sug.change.uttId))
-        store.rejectSuggestion(sug.id)
-    }
+    // DERIVED_ORIGIN: this runs right after undo/redo — tracked rejections would push
+    // a fresh undo item and clear the redo stack, breaking redo whenever an undo
+    // orphans a suggestion.
+    ydoc.transact(() => {
+      for (const sug of store.allSuggestions()) {
+        if (sug.change.type === 'pm:replace' && !docSugIds.has(sug.id))
+          store.rejectSuggestion(sug.id)
+        if ((sug.change.type === 'utt:set-time' || sug.change.type === 'utt:set-participant') && !docUttIds.has(sug.change.uttId))
+          store.rejectSuggestion(sug.id)
+      }
+    }, DERIVED_ORIGIN)
   }
 
   // When an external pm:replace suggestion arrives, apply its marks to the PM doc.
@@ -1185,7 +1224,12 @@
     return store.addLinguisticType(constraint, { constraint }).id
   }
 
-  function ensureWordTier(participant: string): TierDef {
+  function ensureWordTier(participant: string, blockLaneId?: string): TierDef {
+    if (blockLaneId) {
+      const tierName = `tokens:${blockLaneId}`
+      return tiers.find(t => isTokenLtId(t.linguisticTypeId) && t.name === tierName)
+        ?? store.addTier(tierName, { linguisticTypeId: TOKEN_LT_ID, participant })
+    }
     return store.allTiers().find(t => isTokenLtId(t.linguisticTypeId) && t.participant === participant)
       ?? store.addTier(`tokens:${participant}`, { linguisticTypeId: TOKEN_LT_ID, participant })
   }
@@ -1199,8 +1243,7 @@
 
   let mediaState           = $state<MediaState | null>(null)
   let primaryFrameRate     = $state(30)
-  let mediaSignals         = $state<SignalChannel[]>([])
-  let hiddenSignalIds      = $state<Set<string>>(new Set())
+  // mediaSignals / hiddenSignalIds are declared above _afterStoreChange (TDZ).
   let spectrogramSettings = $state<SpectrogramSettings>({ ...DEFAULT_SPEC_SETTINGS })
   let spectrogramProgress = $state<{ done: number; total: number } | null>(null)
   let specModalOpen = $state(false)
@@ -1736,6 +1779,10 @@ let patternSchemaDlgOpen = $state(false)
   // Called from the annotation:add observer; safe to call recursively (each level
   // checks for existing children before adding).
   function _autoPopulateChildTiers(ann: Annotation): void {
+    // annotation:add also fires when undo/redo restores an annotation. The stack item
+    // restores whatever children existed; writing here would be captured onto the
+    // wrong undo/redo stack mid-operation.
+    if (_isUndoRedo()) return
     const tierId = ann.features.tierId as string | undefined
     if (!tierId) return
     const childTiers = store.allTiers().filter(t => {
@@ -1933,7 +1980,7 @@ let patternSchemaDlgOpen = $state(false)
     closeCtxMenu()
   }
 
-  function ctxEditUttTier() {
+function ctxEditUttTier() {
     const lane = timelineData.lanes.find(l => l.id === ctxMenu.laneId)
     const currentParticipant = lane?.participant ?? participantFromTierName(ctxMenu.laneId)
     editUttTierDlg = { open: true, tierName: ctxMenu.laneId, participant: currentParticipant }
@@ -1996,7 +2043,8 @@ let patternSchemaDlgOpen = $state(false)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const participant: string = (lane as any)?.participant ?? ''
       if (!participant) { closeCtxMenu(); return }
-      tierId = ensureWordTier(participant).id
+      const blockLaneId = ctxMenu.laneId.startsWith('tokens:') ? ctxMenu.laneId.slice('tokens:'.length) : undefined
+      tierId = ensureWordTier(participant, blockLaneId).id
     }
     store.updateTier(tierId, { linguisticTypeId: includedIn ? TOKEN_LT_II_ID : TOKEN_LT_ID })
     _pushTimelineData()
@@ -2594,21 +2642,30 @@ let patternSchemaDlgOpen = $state(false)
 
   function handleSelectBar(nodeId: string | null) {
     if (slotFillMode && nodeId) {
-      const { patternId, slotSchemaId, anchorKind } = slotFillMode
+      const { patternId, slotSchemaId, anchorKind, tierId } = slotFillMode
       if (store.getAnnotation(nodeId)) {
-        if (!_slotAccepts(anchorKind, 'span')) { _rejectSlotFill(`This slot expects a ${anchorKind}`); return }
+        const ann = store.getAnnotation(nodeId)!
+        const itemKind = ann.features.tierId ? 'tier' : 'textlet'
+        if (!_slotAccepts(anchorKind, itemKind)) { _rejectSlotFill(`This slot expects a ${anchorKind}`); return }
+        if (tierId) {
+          if (ann.features.tierId !== tierId) {
+            const tierName = store.getTier(tierId)?.name ?? tierId
+            _rejectSlotFill(`This slot expects an annotation from tier "${tierName}"`)
+            return
+          }
+        }
         fillSlot(patternId, slotSchemaId, nodeId)
         return
       }
       const kind = docNodeKind(nodeId)
       if (kind === 'utterance') {
         if (!_slotAccepts(anchorKind, 'utterance')) { _rejectSlotFill(`This slot expects a ${anchorKind}`); return }
-        fillSlotWithNewAnnotation(patternId, slotSchemaId, '', [], { utteranceId: nodeId })
+        fillSlotWithNewAnnotation(patternId, slotSchemaId, 'utterance', [], { utteranceId: nodeId })
         return
       }
       if (kind === 'token') {
         if (!_slotAccepts(anchorKind, 'token')) { _rejectSlotFill(`This slot expects a ${anchorKind}`); return }
-        fillSlotWithNewAnnotation(patternId, slotSchemaId, '', [], { tokenId: nodeId })
+        fillSlotWithNewAnnotation(patternId, slotSchemaId, 'token', [], { tokenId: nodeId })
         return
       }
     }
@@ -2828,9 +2885,16 @@ let patternSchemaDlgOpen = $state(false)
           .sort((a, b) => a.start - b.start)[0]
         const clippedEnd = nextBar ? Math.min(end, nextBar.start) : end
         if (clippedEnd - start < 0.05) return
+        const _tierBase = laneBase(laneId, uttLane.participant ?? '')
+        const _blockTier = tiers.find(t =>
+          t.isUttTier &&
+          t.participant === uttLane.participant &&
+          t.name === (_tierBase || (uttLane.participant ?? ''))
+        )
         editorRef?.insertBlockAtTime('utterance', {
           participant: uttLane.participant,
-          tier: laneId.startsWith('utterance:') ? '' : laneId,
+          tier: _tierBase,
+          ...(_blockTier ? { tierId: _blockTier.id } : {}),
           startTimeSeconds: +start.toFixed(3),
           endTimeSeconds: +clippedEnd.toFixed(3),
         }, start)
@@ -3050,6 +3114,16 @@ let patternSchemaDlgOpen = $state(false)
   // Slot text styling
 
   function updateSlotStyles() {
+    // Always defer: this dispatches a PM transaction, and store observers call it
+    // mid-Yjs-transaction (undo, redo, remote sync) before ySyncPlugin has updated
+    // the PM doc. Dispatching then makes y-prosemirror diff the stale PM doc against
+    // the fragment and write the undone/pre-remote content straight back into Yjs.
+    if (_slotStylesQueued) return
+    _slotStylesQueued = true
+    queueMicrotask(() => { _slotStylesQueued = false; _updateSlotStylesNow() })
+  }
+
+  function _updateSlotStylesNow() {
     const rules: string[] = []
     const styledTokens: import('@mumo/editor').StyledTokenRef[] = []
     for (const pattern of patterns) {
@@ -3175,8 +3249,8 @@ let patternSchemaDlgOpen = $state(false)
     collab.setLocalState('selectedPatternId', id)
   }
 
-  function handleRequestSlotFill(patternId: ID, slotSchemaId: ID, anchorKind: 'span' | 'utterance' | 'pattern' | 'any') {
-    slotFillMode = { patternId, slotSchemaId, anchorKind }
+  function handleRequestSlotFill(patternId: ID, slotSchemaId: ID, anchorKind: 'textlet' | 'utterance' | 'tier' | 'pattern' | 'any', tierId?: ID) {
+    slotFillMode = { patternId, slotSchemaId, anchorKind, ...(tierId !== undefined ? { tierId } : {}) }
     // Ensure the pattern that owns this slot is selected
     if (selectedPatternId !== patternId) {
       selectedPatternId = patternId
@@ -3271,7 +3345,7 @@ let patternSchemaDlgOpen = $state(false)
   function handleFillWithPattern(refPatternId: ID) {
     if (!slotFillMode) return
     const { patternId, slotSchemaId } = slotFillMode
-    fillSlotWithNewAnnotation(patternId, slotSchemaId, '', [], { patternId: refPatternId })
+    fillSlotWithNewAnnotation(patternId, slotSchemaId, 'pattern', [], { patternId: refPatternId })
   }
 
   let _slotFillError = $state<string | null>(null)
@@ -3283,9 +3357,10 @@ let patternSchemaDlgOpen = $state(false)
     _slotFillErrorTimer = window.setTimeout(() => { _slotFillError = null }, 2200)
   }
 
-  function _slotAccepts(anchorKind: 'span' | 'utterance' | 'pattern' | 'any', itemKind: 'span' | 'utterance' | 'pattern' | 'token'): boolean {
+  function _slotAccepts(anchorKind: 'textlet' | 'utterance' | 'tier' | 'pattern' | 'any', itemKind: 'textlet' | 'utterance' | 'pattern' | 'token' | 'tier'): boolean {
     if (anchorKind === 'any') return true
-    if (anchorKind === 'span') return itemKind === 'span' || itemKind === 'token'
+    if (anchorKind === 'textlet') return itemKind === 'textlet' || itemKind === 'token'
+    if (anchorKind === 'tier') return itemKind === 'tier'
     return anchorKind === itemKind
   }
 
@@ -3361,15 +3436,14 @@ let patternSchemaDlgOpen = $state(false)
     if (!slotFillMode) return
     const { patternId, slotSchemaId, anchorKind } = slotFillMode
     if (item.kind === 'annotation') {
-      if (!_slotAccepts(anchorKind, 'span')) { _rejectSlotFill(`This slot expects a ${anchorKind}`); return }
+      if (!_slotAccepts(anchorKind, 'textlet')) { _rejectSlotFill(`This slot expects a ${anchorKind}`); return }
       fillSlot(patternId, slotSchemaId, item.id)
     } else if (item.kind === 'token') {
       if (!_slotAccepts(anchorKind, 'token')) { _rejectSlotFill(`This slot expects a ${anchorKind}`); return }
-      const tok = tokenStore.getToken(item.id)
-      fillSlotWithNewAnnotation(patternId, slotSchemaId, tok?.text ?? '', [], { tokenId: item.id })
+      fillSlotWithNewAnnotation(patternId, slotSchemaId, 'token', [], { tokenId: item.id })
     } else if (item.kind === 'utterance') {
       if (!_slotAccepts(anchorKind, 'utterance')) { _rejectSlotFill(`This slot expects a ${anchorKind}`); return }
-      fillSlotWithNewAnnotation(patternId, slotSchemaId, '', [], { utteranceId: item.id })
+      fillSlotWithNewAnnotation(patternId, slotSchemaId, 'utterance', [], { utteranceId: item.id })
     }
     cancelHoverClose()
   }
@@ -3438,7 +3512,7 @@ let patternSchemaDlgOpen = $state(false)
       return
     }
     const { patternId, slotSchemaId } = slotFillMode
-    fillSlotWithNewAnnotation(patternId, slotSchemaId, token.text, [], { tokenId: token.id })
+    fillSlotWithNewAnnotation(patternId, slotSchemaId, 'token', [], { tokenId: token.id })
   }
 
   function handleEditorPaneMouseUp(e: MouseEvent) {
@@ -3458,7 +3532,7 @@ let patternSchemaDlgOpen = $state(false)
           _rejectSlotFill(`This slot expects a ${slotFillMode.anchorKind}`)
           return
         }
-        fillSlotWithNewAnnotation(patternId, slotSchemaId, '', [], { utteranceId: row.dataset.id })
+        fillSlotWithNewAnnotation(patternId, slotSchemaId, 'utterance', [], { utteranceId: row.dataset.id })
       }
       return
     }
@@ -3471,7 +3545,7 @@ let patternSchemaDlgOpen = $state(false)
       const liveDoc = editorRef?.liveDoc() ?? currentDoc
       const rpos = liveDoc.resolve(range.from)
       const uttId = rpos.depth >= 1 ? (rpos.node(1).attrs['id'] as string | undefined) : undefined
-      fillSlotWithNewAnnotation(patternId, slotSchemaId, '', [{ type: 'mark', markId }], uttId ? { utteranceId: uttId } : {})
+      fillSlotWithNewAnnotation(patternId, slotSchemaId, 'textlet', [{ type: 'mark', markId }], uttId ? { utteranceId: uttId } : {})
     }
   }
 
@@ -3708,7 +3782,15 @@ let patternSchemaDlgOpen = $state(false)
     return store.addLinguisticType(base, { constraint }).id
   }
 
-  function confirmAddTier(vals: { name: string; participant: string; linguisticTypeId: string; constraint: TierConstraint | ''; inlineGloss: boolean }) {
+  function confirmAddTier(vals: { name: string; participant: string; linguisticTypeId: string; constraint: TierConstraint | ''; inlineGloss: boolean; isBlockTier: boolean }) {
+    if (vals.isBlockTier) {
+      const base = vals.name.trim()
+      if (!base || !vals.participant) return
+      store.addTier(base, { isUttTier: true, participant: vals.participant })
+      addTierDlg = { ...addTierDlg, open: false }
+      _pushTimelineData()
+      return
+    }
     const base = vals.name.trim()
     if (!base || tierNameError(base, vals.participant)) return
     const fullName = composeTierName(base, vals.participant)
@@ -3717,7 +3799,7 @@ let patternSchemaDlgOpen = $state(false)
     const parentLaneId = addTierDlg.parentLaneId
 
     // Resolve the lt-word parent tier (if any) so we can set parentTierId correctly.
-    // Named word lanes are ann:${ltWordTier.id}; generic word lanes are tokens:${participant}.
+    // Named word lanes are ann:${ltWordTier.id}; generic word lanes are tokens:${blockLaneId}.
     // Generic lanes always have a real lt-word tier created on demand via ensureWordTier.
     let ltTokenParentTier: TierDef | undefined
     let annParentId: string | undefined
@@ -3727,7 +3809,8 @@ let patternSchemaDlgOpen = $state(false)
       if (!ltTokenParentTier) annParentId = id
     } else if (parentLaneId.startsWith('tokens:')) {
       const participant = timelineData.lanes.find(l => l.id === parentLaneId)?.participant ?? ''
-      if (participant) ltTokenParentTier = ensureWordTier(participant)
+      const blockLaneId = parentLaneId.slice('tokens:'.length)
+      if (participant) ltTokenParentTier = ensureWordTier(participant, blockLaneId)
     }
     const tokenParticipant = ltTokenParentTier?.participant ?? null
 
@@ -4689,12 +4772,17 @@ let patternSchemaDlgOpen = $state(false)
   const inPMEditor   = !!_target.closest?.('.ProseMirror')
   const inNativeInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(_target.tagName)
 
-  // Undo/redo — not rebindable; always route to PM unless already inside PM or native input
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'y') && !e.altKey) {
+  // Undo/redo — not rebindable; always route to PM unless already inside PM or native input.
+  // e.key is 'Z' when Shift is held, so compare lowercased or Ctrl+Shift+Z never matches.
+  const _undoKey = e.key.toLowerCase()
+  if ((e.ctrlKey || e.metaKey) && (_undoKey === 'z' || _undoKey === 'y') && !e.altKey) {
     if (!inNativeInput && !inPMEditor) {
       e.preventDefault()
-      if (e.key === 'z' && !e.shiftKey) undoManager.undo()
-      else undoManager.redo()
+      if (_undoKey === 'z' && !e.shiftKey) {
+        undoManager.undo()
+      } else {
+        undoManager.redo()
+      }
     }
   }
   if (matchKey(e, 'save'))              { e.preventDefault(); void (filecontroller.currentFilename ? saveMumo() : saveMumoAs()) }
@@ -4751,7 +4839,7 @@ let patternSchemaDlgOpen = $state(false)
       const slotSchema = schema?.slots[slotIdx]
       if (slotSchema) {
         e.preventDefault()
-        handleRequestSlotFill(selectedPatternId, slotSchema.id, slotSchema.anchorKind)
+        handleRequestSlotFill(selectedPatternId, slotSchema.id, slotSchema.anchorKind, slotSchema.tierId)
       }
     }
     else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
@@ -5230,10 +5318,11 @@ let patternSchemaDlgOpen = $state(false)
       onmouseleave={() => setRowHighlight(null)}
       oncontextmenu={handleEditorContextMenu}
     >
-      <div class="editor-col-headers" class:hide-times={!showStartTime && !showEndTime} class:hide-start={!showStartTime} class:hide-end={!showEndTime}>
+      <div class="editor-col-headers" class:hide-times={!showStartTime && !showEndTime} class:hide-start={!showStartTime} class:hide-end={!showEndTime} class:show-tier={showUttTierNames}>
         <span class="ech ech-linenum" aria-hidden="true">#</span>
         <span class="ech ech-time ech-time-start" aria-hidden="true">start</span>
         <span class="ech ech-time ech-time-end" aria-hidden="true">end</span>
+        <span class="ech ech-tier" aria-hidden="true">tier</span>
         <span class="ech ech-participant" aria-hidden="true">participant</span>
         <div class="ech ech-content">
           <TranscriptToolbar
@@ -5321,6 +5410,8 @@ let patternSchemaDlgOpen = $state(false)
           {showLeftGuide}
           {showSepGuide}
           {showRightGuide}
+          showTierColumn={showUttTierNames}
+          onTierColW={(w) => { editorPaneEl?.style.setProperty('--tier-col-w', w) }}
         />
         <GutterOverlay
           bind:this={gutterRef}
@@ -5441,7 +5532,7 @@ let patternSchemaDlgOpen = $state(false)
 
   {#if _showTimeline}
   <div class="timeline-resize-handle" role="separator" aria-orientation="horizontal" onpointerdown={startTimelineResize}></div>
-  <div class="timeline-pane" style="height:{timelinePaneH}px">
+  <div class="timeline-pane" style="height:{timelinePaneH}px" class:slot-fill-active={slotFillMode !== null}>
     <Timeline
       bind:this={timelineRef}
       {timeKeeper}
@@ -5547,12 +5638,13 @@ let patternSchemaDlgOpen = $state(false)
     {#if slotFillMode}
       {@const schema_ = patternSchemas.find(s => patterns.find(f => f.id === slotFillMode?.patternId)?.schemaId === s.id)}
       {@const slot_ = schema_?.slots.find(s => s.id === slotFillMode?.slotSchemaId)}
+      {@const fillTierName_ = slotFillMode.tierId ? (store.getTier(slotFillMode.tierId)?.name ?? slotFillMode.tierId) : null}
       <span class="status-item status-fill" class:status-fill-error={!!_slotFillError}>
         {#if _slotFillError}
           {_slotFillError}
         {:else}
           Filling <strong>{slot_?.label ?? slot_?.name ?? '…'}</strong>
-          ({slotFillMode.anchorKind})
+          ({slotFillMode.anchorKind}{fillTierName_ ? ` · ${fillTierName_}` : ''})
           — hover token/textlet · click line number for utterance · click timeline bar · Esc to cancel
         {/if}
       </span>
@@ -6317,6 +6409,8 @@ let patternSchemaDlgOpen = $state(false)
   }
   .ech-linenum { flex-shrink: 0; width: 2rem; text-align: right; }
   .ech-time    { flex-shrink: 0; width: 6.5rem; }
+  .ech-tier    { flex-shrink: 0; width: var(--tier-col-w, 3rem); text-align: center; display: none; }
+  .editor-col-headers.show-tier .ech-tier { display: inline-block; }
   .ech-participant { flex-shrink: 0; width: 4rem; text-align: right; }
   .ech-content { flex: 1; display: flex; align-items: center; overflow: visible; padding-left: 5rem; }
 
@@ -6994,6 +7088,10 @@ let patternSchemaDlgOpen = $state(false)
     cursor: pointer;
   }
 
+  .timeline-pane.slot-fill-active :global(canvas),
+  .timeline-pane.slot-fill-active :global(.tl-lane-label) {
+    cursor: crosshair;
+  }
 
   /* ── Slot-fill hover menu ──────────────────────────────────────────────── */
   .hover-menu {

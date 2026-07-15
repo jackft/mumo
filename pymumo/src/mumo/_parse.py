@@ -24,16 +24,16 @@ def parse_mumo_data(file_path: str) -> dict:
     Parse the mm:mumo_data block from an MMEAF file.
 
     Returns a dict with:
-      utterances    - list of {id, participant, start_ms, end_ms, order}
-      tokens        - list of {id, utt_id, kind, text, start_offset, end_offset}
-      token_times   - {token_id: (start_sec | None, end_sec | None)}
-      utt_ann_ref   - {utt_id: annotation_id}    utterance -> annotation back-ref
-      tok_ann_ref   - {token_id: annotation_id}  token -> annotation back-ref
-      marks         - {mark_id: {id, block_id, start, end}}
-      textlets      - {textlet_id: {id, mark_id, type, features}}
-      annotations   - {ann_id: {id, type, features}}  utterance/token-anchored
-      frame_schemas - {schema_id: {id, name, description, color, hotkey, slots}}
-      frames        - {frame_id: {id, schema_id, note, slots}}
+      utterances      - list of {id, participant, start_ms, end_ms, order}
+      tokens          - list of {id, utt_id, kind, text, start_offset, end_offset}
+      token_times     - {token_id: (start_sec | None, end_sec | None)}
+      utt_ann_ref     - {utt_id: annotation_id}    utterance -> annotation back-ref
+      tok_ann_ref     - {token_id: annotation_id}  token -> annotation back-ref
+      marks           - {mark_id: {id, block_id, start, end}}
+      textlets        - {textlet_id: {id, mark_id, type, features}}
+      annotations     - {ann_id: {id, type, features}}  utterance/token-anchored
+      pattern_schemas - {schema_id: {id, name, description, color, hotkey, slots}}
+      patterns        - {pattern_id: {id, schema_id, note, slots}}
     """
     tree = ET.parse(file_path)
     root = tree.getroot()
@@ -44,22 +44,22 @@ def parse_mumo_data(file_path: str) -> dict:
             'utterances': [], 'tokens': [], 'token_times': {},
             'utt_ann_ref': {}, 'tok_ann_ref': {},
             'marks': {}, 'textlets': {}, 'annotations': {},
-            'frame_schemas': {}, 'frames': {},
+            'pattern_schemas': {}, 'patterns': {},
         }
 
     result: dict = {
         'utterances': [], 'tokens': [], 'token_times': {},
         'utt_ann_ref': {}, 'tok_ann_ref': {},
         'marks': {}, 'textlets': {}, 'annotations': {},
-        'frame_schemas': {}, 'frames': {},
+        'pattern_schemas': {}, 'patterns': {},
     }
 
     _parse_transcript_structure(mm_el, result)
     _parse_marks(mm_el, result)
     _parse_textlets(mm_el, result)
     _parse_annotations(mm_el, result)
-    _parse_frame_schemas(mm_el, result)
-    _parse_frames(mm_el, result)
+    _parse_pattern_schemas(mm_el, result)
+    _parse_patterns(mm_el, result)
     return result
 
 
@@ -165,13 +165,13 @@ def _parse_annotations(mm_el: ET.Element, result: dict) -> None:
         }
 
 
-# -- frame_schemas ------------------------------------------------------------
+# -- pattern_schemas ----------------------------------------------------------
 
-def _parse_frame_schemas(mm_el: ET.Element, result: dict) -> None:
-    schemas_el = mm_el.find(_q('frame_schemas'))
+def _parse_pattern_schemas(mm_el: ET.Element, result: dict) -> None:
+    schemas_el = mm_el.find(_q('pattern_schemas'))
     if schemas_el is None:
         return
-    for s_el in schemas_el.findall(_q('frame_schema')):
+    for s_el in schemas_el.findall(_q('pattern_schema')):
         sid   = s_el.get('id', '')
         slots = []
         for slot_el in s_el.findall(_q('slot')):
@@ -187,13 +187,13 @@ def _parse_frame_schemas(mm_el: ET.Element, result: dict) -> None:
                 'id':          slot_el.get('id', ''),
                 'name':        slot_el.get('name', ''),
                 'label':       slot_el.get('label'),
-                'anchor_kind': slot_el.get('anchor_kind', 'span'),
+                'anchor_kind': slot_el.get('anchor_kind', 'textlet'),
                 'required':    slot_el.get('required') == 'true',
                 'variadic':    slot_el.get('variadic') == 'true',
                 'metrics':     metrics,
             })
         color_str = s_el.get('color')
-        result['frame_schemas'][sid] = {
+        result['pattern_schemas'][sid] = {
             'id':          sid,
             'name':        s_el.get('name', ''),
             'description': s_el.get('description'),
@@ -203,16 +203,16 @@ def _parse_frame_schemas(mm_el: ET.Element, result: dict) -> None:
         }
 
 
-# -- frames -------------------------------------------------------------------
+# -- patterns -----------------------------------------------------------------
 
-def _parse_frames(mm_el: ET.Element, result: dict) -> None:
-    frames_el = mm_el.find(_q('frames'))
-    if frames_el is None:
+def _parse_patterns(mm_el: ET.Element, result: dict) -> None:
+    patterns_el = mm_el.find(_q('patterns'))
+    if patterns_el is None:
         return
-    for f_el in frames_el.findall(_q('frame')):
-        fid   = f_el.get('id', '')
+    for p_el in patterns_el.findall(_q('pattern')):
+        pid   = p_el.get('id', '')
         slots = []
-        for si_el in f_el.findall(_q('slot_instance')):
+        for si_el in p_el.findall(_q('slot_instance')):
             metrics = []
             for mv_el in si_el.findall(_q('metric_value')):
                 metrics.append({
@@ -225,9 +225,9 @@ def _parse_frames(mm_el: ET.Element, result: dict) -> None:
                 'annotation_id':  si_el.get('annotation_id', ''),
                 'metrics':        metrics,
             })
-        result['frames'][fid] = {
-            'id':        fid,
-            'schema_id': f_el.get('schema_id', ''),
-            'note':      f_el.get('note'),
+        result['patterns'][pid] = {
+            'id':        pid,
+            'schema_id': p_el.get('schema_id', ''),
+            'note':      p_el.get('note'),
             'slots':     slots,
         }

@@ -37,7 +37,7 @@
   function addSlot() {
     if (!selected) return
     patchSlots([...selected.slots, {
-      id: newId(), name: 'slot', anchorKind: 'span', required: true, metrics: [],
+      id: newId(), name: 'slot', anchorKind: 'textlet', required: true, metrics: [],
     }])
   }
 
@@ -204,10 +204,11 @@
                        if (v) patchSlot(slot.id, { label: v }); else { const { label: _, ...rest } = slot; patchSlot(slot.id, rest) }
                      }} />
               <select value={slot.anchorKind}
-                      onchange={(e) => patchSlot(slot.id, { anchorKind: (e.currentTarget as HTMLSelectElement).value as 'span' | 'utterance' | 'pattern' | 'any' })}>
+                      onchange={(e) => patchSlot(slot.id, { anchorKind: (e.currentTarget as HTMLSelectElement).value as 'textlet' | 'utterance' | 'tier' | 'pattern' | 'any' })}>
                 <option value="any">any</option>
-                <option value="span">span</option>
+                <option value="textlet">textlet</option>
                 <option value="utterance">utterance</option>
+                <option value="tier">tier annotation</option>
                 <option value="pattern">pattern</option>
               </select>
               <label class="req-label" title="Required">

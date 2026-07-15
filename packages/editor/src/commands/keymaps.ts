@@ -31,7 +31,6 @@ const focusParticipant: Command = (state, _dispatch, view) => {
 function splitBlock(
   state: Parameters<Command>[0],
   dispatch: Parameters<Command>[1],
-  keepParticipant: boolean,
   tokenStore: TokenStore,
   getTokenTime?: (id: string) => { start: number; end: number } | undefined,
 ): boolean {
@@ -61,19 +60,17 @@ function splitBlock(
     if (atStartOfUtt) {
       if (parentNode.content.size === 0) {
         const insertAt = uttPos + parentNode.nodeSize
-        const p = keepParticipant ? ((parentNode.attrs.participant as string | null) ?? '') : ''
-        const newAttrs = { id: newId(), participant: p || null, tier: keepParticipant ? (parentNode.attrs.tier ?? '') : 'utterance', startTimeSeconds: null, endTimeSeconds: null }
+        const newAttrs = { id: newId(), participant: null, tier: 'utterance', startTimeSeconds: null, endTimeSeconds: null }
         let tr = state.tr.insert(insertAt, parentType.create(newAttrs))
         tr = tr.setSelection(TextSelection.create(tr.doc, insertAt + 1))
         dispatch(tr.scrollIntoView())
         return true
       }
 
-      const newUttParticipant = keepParticipant ? ((parentNode.attrs.participant as string | null) ?? '') : ''
       const newNode = schema.nodes['utterance'].create({
         id:               newId(),
-        participant:      newUttParticipant || null,
-        tier:             keepParticipant ? (parentNode.attrs.tier ?? '') : 'utterance',
+        participant:      null,
+        tier:             'utterance',
         startTimeSeconds: null,
         endTimeSeconds:   null,
       })
@@ -109,11 +106,10 @@ function splitBlock(
         : null
 
       const newUttId = newId()
-      const endUttParticipant = keepParticipant ? ((parentNode.attrs.participant as string | null) ?? '') : ''
       const newNode  = schema.nodes['utterance'].create({
         id: newUttId,
-        participant: endUttParticipant || null,
-        tier: keepParticipant ? (parentNode.attrs.tier ?? '') : 'utterance',
+        participant: null,
+        tier: 'utterance',
         startTimeSeconds: newStart,
         endTimeSeconds:   newEnd,
       })
@@ -173,6 +169,54 @@ function splitBlock(
     if (tailPos !== null) tr = tr.setSelection(TextSelection.create(tr.doc, tailPos))
 
     dispatch(tr.scrollIntoView())
+  }
+  return true
+}
+
+/** Shift+Enter in an utterance: split at cursor, tail becomes a continuation block. */
+const createContinuation: Command = (state, dispatch) => {
+  const { $from } = state.selection
+  const uttType = schema.nodes['utterance']
+  let uttDepth = -1
+  for (let d = $from.depth; d >= 0; d--) {
+    if ($from.node(d).type === uttType) { uttDepth = d; break }
+  }
+  if (uttDepth === -1) return false
+
+  const parentNode = $from.node(uttDepth)
+  const uttPos = $from.before(uttDepth)
+  const headId = (parentNode.attrs.continuationOfId as string | null) ?? (parentNode.attrs.id as string)
+  const splitPos = $from.pos
+  const cursorOffset = splitPos - $from.start(uttDepth)
+
+  const contId = newId()
+  const contAttrs = {
+    id: contId,
+    participant: parentNode.attrs.participant,
+    tier: parentNode.attrs.tier,
+    tierId: parentNode.attrs.tierId ?? null,
+    continuationOfId: headId,
+    startTimeSeconds: null,
+    endTimeSeconds: null,
+  }
+
+  if (dispatch) {
+    if (cursorOffset === 0) {
+      // At start of utterance: insert an empty continuation after the current block
+      // (splitting here would empty the head and move all content to the continuation)
+      const insertAt = uttPos + parentNode.nodeSize
+      let tr = state.tr.insert(insertAt, uttType.create(contAttrs))
+      tr = tr.setSelection(TextSelection.create(tr.doc, insertAt + 1))
+      dispatch(tr.scrollIntoView())
+    } else {
+      // Mid or end: split text at cursor; tail gets continuationOfId
+      let tr = state.tr.split(splitPos, 1, [{ type: uttType, attrs: contAttrs }])
+      let tailPos: number | null = null
+      tr.doc.forEach((node, offset) => { if (node.attrs.id === contId) tailPos = offset + 1 })
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (tailPos !== null) tr = tr.setSelection(TextSelection.create(tr.doc, tailPos))
+      dispatch(tr.scrollIntoView())
+    }
   }
   return true
 }
@@ -418,8 +462,7 @@ export function buildKeymapPlugin(
   getTokenTime?: (id: string) => { start: number; end: number } | undefined,
   onEscapeKey?: () => void,
 ) {
-  const splitUtterance:            Command = (state, dispatch) => splitBlock(state, dispatch, false, tokenStore, getTokenTime)
-  const splitUtteranceSameParticipant: Command = (state, dispatch) => splitBlock(state, dispatch, true,  tokenStore, getTokenTime)
+  const splitUtterance: Command = (state, dispatch) => splitBlock(state, dispatch, tokenStore, getTokenTime)
 
   return [
     keymap({
@@ -431,7 +474,7 @@ export function buildKeymapPlugin(
       'Mod-Shift-s': toggleMark(schema.marks['strike']),
       'Mod-u': toggleMark(schema.marks['underline']),
       'Enter': chainCommands(exitComment, splitUtterance),
-      'Shift-Enter': chainCommands(splitComment, splitUtteranceSameParticipant),
+      'Shift-Enter': chainCommands(splitComment, createContinuation),
       'Alt-/': insertCommentBlock,
       'Alt-Shift-Enter': insertVisualization,
       'Shift-Tab': focusParticipant,

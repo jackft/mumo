@@ -58,6 +58,8 @@ export class UtteranceNodeView implements NodeView {
     this.lineNumEl.className = 'utt-linenum'
     this.lineNumEl.contentEditable = 'false'
 
+    if (node.attrs.continuationOfId) this.dom.setAttribute('data-continuation', 'true')
+
     this.lineNumRightEl = document.createElement('span')
     this.lineNumRightEl.className = 'utt-linenum utt-linenum-right'
     this.lineNumRightEl.contentEditable = 'false'
@@ -65,12 +67,12 @@ export class UtteranceNodeView implements NodeView {
     this.startTimeEl = document.createElement('span')
     this.startTimeEl.className = 'utt-time utt-time-start'
     this.startTimeEl.contentEditable = 'false'
-    this.startTimeEl.textContent = formatTime(node.attrs.startTimeSeconds)
+    this.startTimeEl.textContent = formatTime(this._displayTime(node, 'start'))
 
     this.endTimeEl = document.createElement('span')
     this.endTimeEl.className = 'utt-time utt-time-end'
     this.endTimeEl.contentEditable = 'false'
-    this.endTimeEl.textContent = formatTime(node.attrs.endTimeSeconds)
+    this.endTimeEl.textContent = formatTime(this._displayTime(node, 'end'))
 
     this.participantEl = document.createElement('span')
     this.participantEl.className = 'utt-participant'
@@ -96,8 +98,8 @@ export class UtteranceNodeView implements NodeView {
     this.dom.appendChild(this.lineNumEl)
     this.dom.appendChild(this.startTimeEl)
     this.dom.appendChild(this.endTimeEl)
-    this.dom.appendChild(this.participantEl)
     this.dom.appendChild(this.tierEl)
+    this.dom.appendChild(this.participantEl)
     this.dom.appendChild(this.contentDOM)
     this.dom.appendChild(this.lineNumRightEl)
     this.dom.appendChild(this.glossEl)
@@ -443,11 +445,27 @@ export class UtteranceNodeView implements NodeView {
       this.tierEl.textContent = node.attrs.tier || ''
     }
     if (this._editingWhichTime !== 'start')
-      this.startTimeEl.textContent = formatTime(node.attrs.startTimeSeconds, this._decimals)
+      this.startTimeEl.textContent = formatTime(this._displayTime(node, 'start'), this._decimals)
     if (this._editingWhichTime !== 'end')
-      this.endTimeEl.textContent   = formatTime(node.attrs.endTimeSeconds,   this._decimals)
+      this.endTimeEl.textContent   = formatTime(this._displayTime(node, 'end'),   this._decimals)
     this.dom.setAttribute('data-id', node.attrs.id)
+    if (node.attrs.continuationOfId) {
+      this.dom.setAttribute('data-continuation', 'true')
+    } else {
+      this.dom.removeAttribute('data-continuation')
+    }
     return true
+  }
+
+  private _displayTime(node: Node, which: 'start' | 'end'): number | null {
+    const headId = node.attrs.continuationOfId as string | null
+    if (!headId) return which === 'start' ? (node.attrs.startTimeSeconds as number | null) : (node.attrs.endTimeSeconds as number | null)
+    let result: number | null = null
+    this.view.state.doc.forEach(block => {
+      if (block.attrs.id === headId)
+        result = which === 'start' ? block.attrs.startTimeSeconds : block.attrs.endTimeSeconds
+    })
+    return result
   }
 
   private _startTimeEdit(which: 'start' | 'end'): void {

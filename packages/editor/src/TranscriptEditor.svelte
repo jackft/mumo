@@ -36,9 +36,11 @@
   import { refreshAllTimeViews, getCurrentDecimals } from './format.js'
   import { buildOverlapPlugin, buildOverlapAlignmentPlugin } from './plugins/overlap.js'
   import { buildSelectionSpacerPlugin, setSelectionMarkSpacers as _setSelectionMarkSpacers } from './plugins/selection-spacer.js'
+  import { setUttTiersVisible } from './utt-tier.js'
   import { UtteranceNodeView } from './nodeviews/UtteranceNodeView.js'
   import { ImageNodeView } from './nodeviews/ImageNodeView.js'
   import { VisualizationNodeView } from './nodeviews/VisualizationNodeView.js'
+  import { buildAnchorPlugin, buildAnchorAlignmentPlugin } from './plugins/anchor.js'
   import { buildImageInputRulePlugin } from './plugins/image-command.js'
   import { buildSpectInputRulePlugin } from './commands/viz-commands.js'
   import { buildSymbolInputRulePlugin } from './plugins/symbol-input.js'
@@ -47,7 +49,7 @@
   import { buildVizSyncPlugin } from './plugins/viz-sync-plugin.js'
   import { gapCursor } from 'prosemirror-gapcursor'
   import type { TokenRecord } from '@mumo/core'
-  import { buildPlayingPlugin, updatePlaying, buildLoopPlugin, updateLoopIds } from './plugins/playback-plugins.js'
+  import { buildPlayingPlugin, updatePlaying, buildLoopPlugin, updateLoopIds, buildContinuationHeadPlugin, buildContinuationHoverPlugin } from './plugins/playback-plugins.js'
   import type { FormattingState } from './format.js'
 
   interface Props {
@@ -87,6 +89,8 @@
     showLeftGuide?: boolean
     showSepGuide?: boolean
     showRightGuide?: boolean
+    showTierColumn?: boolean
+    onTierColW?: (w: string) => void
   }
 
   const {
@@ -126,6 +130,8 @@
     showLeftGuide = true,
     showSepGuide = true,
     showRightGuide = true,
+    showTierColumn = false,
+    onTierColW,
   }: Props = $props()
 
   let container: HTMLDivElement
@@ -278,7 +284,19 @@
 
   function _applyPlayingClasses(added: string[], removed: string[]) {
     if (!view) return
-    updatePlaying(view, added, removed)
+    // Also mark continuation blocks whose head is active/inactive
+    const expandedAdded = [...added]
+    const expandedRemoved = [...removed]
+    const addedSet = new Set(added)
+    const removedSet = new Set(removed)
+    view.state.doc.forEach((node) => {
+      const headId = node.attrs.continuationOfId as string | null
+      if (!headId) return
+      const id = node.attrs.id as string
+      if (addedSet.has(headId)) expandedAdded.push(id)
+      if (removedSet.has(headId)) expandedRemoved.push(id)
+    })
+    updatePlaying(view, expandedAdded, expandedRemoved)
   }
 
   export function setLoopIds(ids: string[]): void {
@@ -303,27 +321,51 @@
 
     let lineCount = 0
     let longestParticipant = 'XX'
+    let longestTier = ''
     doc.forEach(n => {
       if (n.type.name !== 'utterance') return
       lineCount++
       const p = (n.attrs.participant as string) || ''
       if (p.length > longestParticipant.length) longestParticipant = p
+      const t = (n.attrs.tier as string) || ''
+      if (t.length > longestTier.length) longestTier = t
     })
 
     // Line number width
     const digits = String(Math.max(lineCount, 1)).length
-    const lnW = digits <= 2 ? '2rem' : digits === 3 ? '2.5rem' : digits === 4 ? '3rem' : '3.5rem'
-    el.style.setProperty('--ln-w', lnW)
+    const lnRem = digits <= 2 ? 2 : digits === 3 ? 2.5 : digits === 4 ? 3 : 3.5
+    el.style.setProperty('--ln-w', lnRem.toFixed(2) + 'rem')
 
     // Time width — measure a sample formatted time at the element's actual font
     const timeSample = `00:00:00${decimals > 0 ? '.' + '0'.repeat(decimals) : ''}`
     const timePx = _measureW(timeSample, 'font-size:0.72em;font-variant-numeric:tabular-nums', el)
-    el.style.setProperty('--time-w', ((timePx / rem) + 0.6).toFixed(2) + 'rem')
+    const timeRem = (timePx / rem) + 0.6
+    el.style.setProperty('--time-w', timeRem.toFixed(2) + 'rem')
 
     // Participant width — measure the longest participant name at the element's actual font
     const participantPx = _measureW(longestParticipant + ':', 'font-size:0.85em;font-weight:600', el)
     const participantRem = Math.min(Math.max(participantPx / rem + 0.6, 2), 12)
     el.style.setProperty('--participant-w', participantRem.toFixed(2) + 'rem')
+
+    // Tier column width — only when showTierColumn is true
+    let tierColRem = 0
+    if (showTierColumn) {
+      const ref = longestTier.length > 'utterance'.length ? longestTier : 'utterance'
+      const tierPx = _measureW(ref, 'font-size:0.7em', el)
+      tierColRem = Math.min(Math.max(tierPx / rem + 0.4, 1.5), 8)
+    }
+    const tierColW = tierColRem.toFixed(2) + 'rem'
+    el.style.setProperty('--tier-col-w', tierColW)
+    onTierColW?.(tierColW)
+
+    // Compute --utt-meta-w: offset from left edge to content start.
+    // Layout: ln-w (+ ln-margins 0.25+0.25) + [time-w + gap]* + [tier-col-w + gap]? + participant-w + gap
+    // Pattern: ln-w + (nCols + 1) * 0.5rem + sum(column widths)
+    // where nCols = nTimes + (tierCol > 0 ? 1 : 0) + 1 (participant)
+    const nTimes = showTimes ? (showStart ? 1 : 0) + (showEnd ? 1 : 0) : 0
+    const nCols = nTimes + (tierColRem > 0 ? 1 : 0) + 1
+    const uttMetaRem = lnRem + (nCols + 1) * 0.5 + nTimes * timeRem + tierColRem + participantRem
+    el.style.setProperty('--utt-meta-w', uttMetaRem.toFixed(2) + 'rem')
   }
 
   function _activeUtteranceId(sel: Selection): string | null {
@@ -358,8 +400,12 @@
         buildSlotStylePlugin(),
         buildPlayingPlugin(),
         buildLoopPlugin(),
+        buildContinuationHeadPlugin(),
+        buildContinuationHoverPlugin(),
         buildOverlapPlugin(),
         buildOverlapAlignmentPlugin(onOverlapChange),
+        buildAnchorPlugin(),
+        buildAnchorAlignmentPlugin(),
         buildSelectionSpacerPlugin(),
         buildImageInputRulePlugin(),
         buildSpectInputRulePlugin(),
@@ -584,6 +630,13 @@
 
   // Clear the accumulator whenever suggest mode is turned off so state doesn't leak.
   $effect(() => { if (!suggestMode) _suggestAccum = null })
+
+  // Re-run column measurement when visibility props change (showTimes, showStart, showEnd, showTierColumn).
+  // Also syncs tier column display state with setUttTiersVisible.
+  $effect(() => {
+    setUttTiersVisible(showTierColumn)
+    if (view) _updateColumnWidths(view.state.doc)
+  })
 
   export function getView(): EditorView | undefined {
     return view
@@ -1078,7 +1131,8 @@
     --ln-w: 2rem;
     --ln-margin: 0.25rem;
     --ln-gutter: calc(var(--ln-w) + var(--ln-margin) * 2);
-    --utt-meta-w: calc(var(--ln-w) + var(--time-w, 6.5rem) + var(--time-w, 6.5rem) + var(--participant-w, 4rem) + 4 * 0.5rem);
+    --tier-col-w: 0rem;
+    --utt-meta-w: calc(var(--ln-w) + var(--time-w, 6.5rem) + var(--time-w, 6.5rem) + var(--tier-col-w, 0rem) + var(--participant-w, 4rem) + 5 * 0.5rem);
     /* Both times visible: gutter + gap + time + gap + time + half-gap */
     --sep-x: calc(var(--ln-gutter) + var(--time-w, 6.5rem) * 2 + 1.25rem);
     /* Per-guide positions — set to -1px to hide an individual line */
@@ -1130,11 +1184,9 @@
     counter-increment: utt-line;
     min-height: 1.5em;
   }
-  .hide-times :global(.comment-row) { padding-left: calc(var(--ln-w, 2rem) + var(--participant-w, 4rem) + 2 * 0.5rem); }
-  .hide-start :global(.comment-row) { padding-left: calc(var(--ln-w, 2rem) + var(--time-w, 6.5rem) + var(--participant-w, 4rem) + 3 * 0.5rem); }
-  .hide-end   :global(.comment-row) { padding-left: calc(var(--ln-w, 2rem) + var(--time-w, 6.5rem) + var(--participant-w, 4rem) + 3 * 0.5rem); }
 
   :global(.utt-row) {
+    position: relative;
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -1143,6 +1195,40 @@
     padding: 0.05rem 0;
     line-height: 1.5;
     counter-increment: utt-line;
+  }
+
+  :global(.utt-row.continuation-chain-hover) {
+    background: rgba(74, 158, 255, 0.12);
+    box-shadow: 0 1px 0 0 #4a9eff, 0 -1px 0 0 #4a9eff;
+  }
+
+  :global(.continuation-tooltip) {
+    z-index: 9999;
+    background: var(--color-surface-2, #2a2a2a);
+    color: var(--color-text, #eee);
+    font-size: 0.75rem;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  :global(.utt-row[data-has-continuation] .utt-content::after) {
+    content: '\2060↩';
+    display: inline-block;
+    font-size: 0.85em;
+    color: var(--color-text-muted, #bbb);
+    margin-left: 0.35em;
+    user-select: none;
+    pointer-events: none;
+    vertical-align: baseline;
+  }
+
+  :global(.utt-row[data-continuation] .utt-participant::after) {
+    content: '↪';
+    transform: scaleY(-1);
+    color: var(--color-text-muted, #bbb);
+    font-weight: 400;
   }
 
   :global(.utt-linenum) {
@@ -1217,6 +1303,9 @@
 
   :global(.utt-participant::after) {
     content: ':';
+    display: inline-block;
+    width: 1em;
+    text-align: center;
     color: var(--color-text-light, #888);
     font-weight: 400;
   }
@@ -1298,7 +1387,8 @@
 
   :global(.utt-tier) {
     flex-shrink: 0;
-    max-width: var(--tier-w, 7rem);
+    width: var(--tier-col-w, 0rem);
+    text-align: right;
     font-size: 0.7em;
     color: var(--color-text-muted, #aaa);
     font-variant-numeric: tabular-nums;
@@ -1307,21 +1397,17 @@
     text-overflow: ellipsis;
     cursor: text;
     user-select: none;
-    border: 1px solid transparent;
     border-radius: 2px;
-    padding: 0 0.2em;
   }
 
   :global(.utt-tier:not(:empty):hover) {
-    border-color: var(--color-border, #ddd);
+    box-shadow: 0 0 0 1px var(--color-border, #ddd);
     color: var(--color-text-2, #666);
   }
 
   :global(.utt-tier[contenteditable="true"]) {
     background: #fffbe6;
     outline: 1px solid #f0c040;
-    border-color: transparent;
-    border-radius: 2px;
     cursor: text;
     user-select: text;
     overflow: visible;
@@ -1366,10 +1452,6 @@
     border-radius: 2px;
   }
 
-  /* Adjust gloss indent when time columns are hidden */
-  .hide-times :global(.utt-gloss) { padding-left: calc(var(--ln-w, 2rem) + var(--participant-w, 4rem) + 2 * 0.5rem); }
-  .hide-start :global(.utt-gloss),
-  .hide-end   :global(.utt-gloss) { padding-left: calc(var(--ln-w, 2rem) + var(--time-w, 6.5rem) + var(--participant-w, 4rem) + 3 * 0.5rem); }
 
   :global(.tok-ws) {
     white-space: pre-wrap;
@@ -1495,6 +1577,16 @@
     user-select: none;
     cursor: default;
     pointer-events: none;
+  }
+
+  :global(.anchor-node) {
+    display: inline-block;
+    font-family: monospace;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--color-anchor, #c0752a);
+    user-select: none;
+    cursor: default;
   }
 
   :global(.img-node) {

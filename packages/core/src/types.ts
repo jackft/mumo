@@ -46,6 +46,8 @@ export interface TierDefJSON {
   inlineGloss?: boolean
   /** If set, tier lane renders as a track visualization backed by this track. */
   trackRef?: { trackSetId: ID; trackId: ID }
+  /** If true, this tier mirrors PM utterance/block nodes for one participant. */
+  isUttTier?: boolean
 }
 
 export interface LinguisticTypeJSON {
@@ -99,7 +101,8 @@ export interface SlotSchemaJSON {
   id: ID
   name: string
   label?: string
-  anchorKind: 'span' | 'utterance' | 'pattern' | 'any'
+  anchorKind: 'textlet' | 'utterance' | 'tier' | 'pattern' | 'any'
+  tierId?: ID
   required?: boolean
   variadic?: boolean
   style?: SlotTextStyle

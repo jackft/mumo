@@ -11,12 +11,15 @@ class UtteranceAnchor(NamedTuple):
     utterance: object     # UtteranceView
 
 
-class SpanAnchor(NamedTuple):
-    kind: str             # always 'span'
+class TextletAnchor(NamedTuple):
+    kind: str             # always 'textlet'
     utterance: object     # UtteranceView
     start: int            # char offset (inclusive)
     end: int              # char offset (exclusive)
     text: str
+
+
+SpanAnchor = TextletAnchor  # backward-compat alias
 
 
 class TimeAnchor(NamedTuple):
@@ -284,17 +287,17 @@ class SlotView:
 
     @property
     def anchor_kind(self) -> str | None:
-        """'utterance', 'span', 'time', or 'frame' - the discriminant for .anchor."""
+        """'utterance', 'textlet', 'time', or 'frame' - the discriminant for .anchor."""
         s = self.schema
         return s['anchor_kind'] if s else None
 
     @property
-    def anchor(self) -> UtteranceAnchor | SpanAnchor | TimeAnchor | None:
+    def anchor(self) -> UtteranceAnchor | TextletAnchor | TimeAnchor | None:
         """
         The resolved content of this slot as a typed value.
 
           UtteranceAnchor  .utterance
-          SpanAnchor       .utterance  .start  .end  .text
+          TextletAnchor    .utterance  .start  .end  .text
           TimeAnchor       .start  .end
         """
         kind = self.anchor_kind
@@ -303,13 +306,13 @@ class SlotView:
             if utt is None:
                 return None
             return UtteranceAnchor(kind='utterance', utterance=utt)
-        if kind == 'span':
+        if kind == 'textlet':
             sp = self.span
             if sp is None:
                 return None
             utt, start, end = sp
-            return SpanAnchor(kind='span', utterance=utt, start=start, end=end,
-                              text=utt.text[start:end])
+            return TextletAnchor(kind='textlet', utterance=utt, start=start, end=end,
+                                 text=utt.text[start:end])
         if kind == 'time':
             t = self.time
             if t is None:
@@ -428,7 +431,7 @@ class FrameView:
 
     @property
     def schema(self) -> dict | None:
-        return self._doc._mumo['frame_schemas'].get(self._record['schema_id'])
+        return self._doc._mumo['pattern_schemas'].get(self._record['schema_id'])
 
     @property
     def slots(self) -> list[SlotView]:
