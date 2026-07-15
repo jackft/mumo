@@ -1216,7 +1216,6 @@
   :global(.utt-row[data-has-continuation] .utt-content::after) {
     content: '\2060↩';
     display: inline-block;
-    font-size: 0.85em;
     color: var(--color-text-muted, #bbb);
     margin-left: 0.35em;
     user-select: none;
@@ -1224,11 +1223,11 @@
     vertical-align: baseline;
   }
 
-  :global(.utt-row[data-continuation] .utt-participant::after) {
-    content: '↪';
+  :global(.utt-continuation-mark) {
     transform: scaleY(-1);
     color: var(--color-text-muted, #bbb);
     font-weight: 400;
+    cursor: default;
   }
 
   :global(.utt-linenum) {
@@ -1301,13 +1300,13 @@
     font-size: 0.85em;
   }
 
-  :global(.utt-participant::after) {
-    content: ':';
+  :global(.utt-participant-sep) {
     display: inline-block;
     width: 1em;
     text-align: center;
     color: var(--color-text-light, #888);
     font-weight: 400;
+    user-select: none;
   }
 
   :global(.utt-participant[contenteditable="true"]) {

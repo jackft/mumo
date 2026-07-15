@@ -181,11 +181,15 @@ export function buildContinuationHoverPlugin(): Plugin {
         }
       }
 
-      function _isOverMark(target: HTMLElement, row: HTMLElement): boolean {
-        return (
-          (!!target.closest('.utt-participant') && row.hasAttribute('data-continuation')) ||
-          (!!target.closest('.utt-content') && row.hasAttribute('data-has-continuation'))
-        )
+      function _isOverMark(target: HTMLElement): boolean {
+        return !!target.closest('.utt-continuation-mark')
+      }
+
+      function _positionTooltipAbove(mark: HTMLElement) {
+        const rect = mark.getBoundingClientRect()
+        tooltip.style.left = `${rect.left + rect.width / 2}px`
+        tooltip.style.top = `${rect.top - 4}px`
+        tooltip.style.transform = 'translate(-50%, -100%)'
       }
 
       function onMouseOver(e: MouseEvent) {
@@ -198,17 +202,13 @@ export function buildContinuationHoverPlugin(): Plugin {
         }
         const id = row.getAttribute('data-id')
         if (id) _setChain(_chainFor(id, editorView.state.doc), editorView.dom)
-        if (_isOverMark(target, row)) {
+        const mark = target.closest<HTMLElement>('.utt-continuation-mark')
+        if (mark) {
+          _positionTooltipAbove(mark)
           tooltip.style.display = 'block'
         } else {
           tooltip.style.display = 'none'
         }
-      }
-
-      function onMouseMove(e: MouseEvent) {
-        if (tooltip.style.display === 'none') return
-        tooltip.style.left = `${e.clientX + 12}px`
-        tooltip.style.top = `${e.clientY + 16}px`
       }
 
       function onMouseOut(e: MouseEvent) {
@@ -219,13 +219,11 @@ export function buildContinuationHoverPlugin(): Plugin {
       }
 
       editorView.dom.addEventListener('mouseover', onMouseOver)
-      editorView.dom.addEventListener('mousemove', onMouseMove)
       editorView.dom.addEventListener('mouseout', onMouseOut)
 
       return {
         destroy() {
           editorView.dom.removeEventListener('mouseover', onMouseOver)
-          editorView.dom.removeEventListener('mousemove', onMouseMove)
           editorView.dom.removeEventListener('mouseout', onMouseOut)
           tooltip.remove()
         },

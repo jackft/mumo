@@ -35,6 +35,7 @@ export class UtteranceNodeView implements NodeView {
   _decimals: number
   _editingWhichTime: 'start' | 'end' | null = null
   private _participantEditing = false
+  private _sepEl: HTMLSpanElement
 
   private _glossOnSave: ((text: string) => void) | null = null
   private _hasGlossAnnotation = false
@@ -80,6 +81,12 @@ export class UtteranceNodeView implements NodeView {
     this.participantEl.textContent = node.attrs.participant || '—'
     this.participantEl.title = 'Click to edit participant (Shift+Tab)'
 
+    this._sepEl = document.createElement('span')
+    this._sepEl.className = 'utt-participant-sep'
+    this._sepEl.contentEditable = 'false'
+    this._refreshSepEl(node.attrs.continuationOfId as string | null)
+    this.participantEl.appendChild(this._sepEl)
+
     this.tierEl = document.createElement('span')
     this.tierEl.className = 'utt-tier'
     this.tierEl.contentEditable = 'false'
@@ -109,13 +116,13 @@ export class UtteranceNodeView implements NodeView {
     registerUttTierView(node.attrs.id as string, this)
 
     this.startTimeEl.addEventListener('click', () => {
-      const t = this.node.attrs.startTimeSeconds
+      const t = this._displayTime(this.node, 'start')
       if (t !== null) this.onSeek?.(t)
       else this._startTimeEdit('start')
     })
 
     this.endTimeEl.addEventListener('click', () => {
-      const t = this.node.attrs.endTimeSeconds
+      const t = this._displayTime(this.node, 'end')
       if (t !== null) this.onSeek?.(t)
       else this._startTimeEdit('end')
     })
@@ -154,6 +161,16 @@ export class UtteranceNodeView implements NodeView {
         this._cancelGlossEdit()
       }
     })
+  }
+
+  private _refreshSepEl(continuationOfId: string | null): void {
+    if (continuationOfId) {
+      this._sepEl.className = 'utt-participant-sep utt-continuation-mark'
+      this._sepEl.textContent = '↪'
+    } else {
+      this._sepEl.className = 'utt-participant-sep'
+      this._sepEl.textContent = ':'
+    }
   }
 
   // Gloss editing
@@ -230,16 +247,19 @@ export class UtteranceNodeView implements NodeView {
     if (this._participantEditing) return
     this._participantEditing = true
     const original = this.node.attrs.participant as string
+    this._sepEl.remove()
     startFieldEdit(this.participantEl, this.view,
       (rawText, returnFocus) => {
         this._participantEditing = false
         const newParticipant = rawText === '—' ? '' : rawText
         this.participantEl.textContent = newParticipant || '—'
+        this.participantEl.appendChild(this._sepEl)
         const pos = this.getPos()
         if (pos === undefined) return
         if (newParticipant !== original) {
           if (this.participantConflicts(newParticipant, pos)) {
             this.participantEl.textContent = original || '—'
+            this.participantEl.appendChild(this._sepEl)
             this.participantEl.classList.add('utt-participant--conflict')
             setTimeout(() => { this.participantEl.classList.remove('utt-participant--conflict') }, 700)
             return
@@ -261,6 +281,7 @@ export class UtteranceNodeView implements NodeView {
       () => {
         this._participantEditing = false
         this.participantEl.textContent = original || '—'
+        this.participantEl.appendChild(this._sepEl)
       },
     )
     // Select all for easy replacement
@@ -396,6 +417,7 @@ export class UtteranceNodeView implements NodeView {
   stopEvent(event: Event): boolean {
     return (
       event.target === this.participantEl ||
+      event.target === this._sepEl ||
       event.target === this.tierEl ||
       event.target === this.startTimeEl ||
       event.target === this.endTimeEl ||
@@ -440,7 +462,9 @@ export class UtteranceNodeView implements NodeView {
     }
     if (this.participantEl.contentEditable !== 'true') {
       this.participantEl.textContent = node.attrs.participant || '—'
+      this.participantEl.appendChild(this._sepEl)
     }
+    this._refreshSepEl(node.attrs.continuationOfId as string | null)
     if (this.tierEl.contentEditable !== 'true') {
       this.tierEl.textContent = node.attrs.tier || ''
     }
