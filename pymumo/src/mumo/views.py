@@ -1,165 +1,118 @@
-"""View classes wrapping parsed mumo data and pympi ELAN tier data."""
+"""Rich view objects wrapping parsed mumo data."""
 from __future__ import annotations
-from typing import NamedTuple, TYPE_CHECKING
+from typing import Iterator, NamedTuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .doc import MumoDoc
 
 
-class UtteranceAnchor(NamedTuple):
-    kind: str             # always 'utterance'
-    utterance: object     # UtteranceView
+# ---------------------------------------------------------------------------
+# Anchor types
+# ---------------------------------------------------------------------------
 
+class UtteranceAnchor(NamedTuple):
+    kind: str        # 'utterance'
+    utterance: object
 
 class TextletAnchor(NamedTuple):
-    kind: str             # always 'textlet'
-    utterance: object     # UtteranceView
-    start: int            # char offset (inclusive)
-    end: int              # char offset (exclusive)
+    kind: str        # 'textlet'
+    utterance: object
+    start: int
+    end: int
     text: str
 
-
-SpanAnchor = TextletAnchor  # backward-compat alias
-
-
 class TimeAnchor(NamedTuple):
-    kind: str             # always 'time'
-    start: float          # seconds
-    end: float            # seconds
+    kind: str        # 'time'
+    start: float
+    end: float
+
+SpanAnchor = TextletAnchor  # backward-compat
 
 
-class UtteranceView:
-    def __init__(self, record: dict, doc: MumoDoc) -> None:
-        self._record = record
-        self._doc = doc
+class OverlapMark(NamedTuple):
+    group_id: str
+    kind: str       # 'start' | 'end'
+    char_offset: int
+
+
+class OverlapGroup:
+    """All overlap bracket marks sharing a group_id, across all utterances."""
+    __slots__ = ('_id', '_entries')
+
+    def __init__(self, group_id: str, entries: list) -> None:
+        self._id      = group_id
+        self._entries = entries  # list of (Utterance, OverlapMark)
 
     @property
     def id(self) -> str:
-        return self._record['id']
+        return self._id
 
     @property
-    def participant(self) -> str:
-        return self._record['participant']
-
-    @property
-    def order(self) -> int:
-        return self._record['order']
-
-    @property
-    def start_ms(self) -> int | None:
-        return self._record['start_ms']
-
-    @property
-    def end_ms(self) -> int | None:
-        return self._record['end_ms']
+    def utterances(self) -> list:
+        seen: set[str] = set()
+        result = []
+        for utt, _ in self._entries:
+            if utt.id not in seen:
+                seen.add(utt.id)
+                result.append(utt)
+        return result
 
     @property
     def start_time(self) -> float | None:
-        ms = self._record['start_ms']
-        return ms / 1000.0 if ms is not None else None
+        """Latest start time among involved utterances (when overlap begins)."""
+        times = [u.start_time for u in self.utterances if u.start_time is not None]
+        return max(times) if times else None
 
     @property
     def end_time(self) -> float | None:
-        ms = self._record['end_ms']
-        return ms / 1000.0 if ms is not None else None
+        """Earliest end time among involved utterances (when overlap ends)."""
+        times = [u.end_time for u in self.utterances if u.end_time is not None]
+        return min(times) if times else None
 
-    @property
-    def tokens(self) -> list[TokenView]:
-        return [TokenView(t, self._doc) for t in self._doc._tokens_for_utt(self._record['id'])]
-
-    @property
-    def text(self) -> str:
-        return ''.join(t['text'] for t in self._doc._tokens_for_utt(self._record['id']))
-
-    @property
-    def eaf_annotation(self) -> object | None:
-        """The EAF annotation directly referencing this utterance (via annotation_ref)."""
-        ann_id = self._doc._mumo['utt_ann_ref'].get(self._record['id'])
-        if ann_id and ann_id in self._doc.annotations:
-            return AnnotationView(ann_id, self._doc)
-        return None
-
-    def eaf_annotations(self, tier: str | None = None) -> list:
-        """
-        Aligned EAF annotations overlapping this utterance's time span, plus
-        their ref/symbolic children (POS, gloss, etc.).
-
-        This is the structural path: frame -> slot -> utterance -> annotations.
-        """
-        s, e = self.start_time, self.end_time
-        if s is None or e is None:
-            return []
-        aligned = self._doc.annotations_overlapping(s, e, tier=tier)
-        seen = {a.id for a in aligned}
-        result = list(aligned)
-        for a in aligned:
-            for child in a.children:
-                if child.id not in seen:
-                    seen.add(child.id)
-                    result.append(child)
-        return result
+    def __repr__(self) -> str:
+        participants = ', '.join(u.participant for u in self.utterances)
+        return f'OverlapGroup({self._id!r}, [{participants}])'
 
 
-class TokenView:
-    def __init__(self, record: dict, doc: MumoDoc) -> None:
-        self._record = record
+# ---------------------------------------------------------------------------
+# Token
+# ---------------------------------------------------------------------------
+
+class Token:
+    __slots__ = ('_rec', '_doc')
+
+    def __init__(self, rec: dict, doc: MumoDoc) -> None:
+        self._rec = rec
         self._doc = doc
 
     @property
     def id(self) -> str:
-        return self._record['id']
+        return self._rec['id']
 
     @property
     def text(self) -> str:
-        return self._record['text']
+        return self._rec['text']
 
     @property
     def kind(self) -> str:
-        return self._record['kind']
+        return self._rec['kind']
 
     @property
-    def utterance(self) -> UtteranceView | None:
-        return self._doc._utterance_view(self._record['utt_id'])
-
-    @property
-    def index(self) -> int:
-        """0-based index among non-ws tokens in the utterance."""
-        word_toks = [t for t in self._doc._tokens_for_utt(self._record['utt_id'])
-                     if t['kind'] != 'ws']
-        return next((i for i, t in enumerate(word_toks) if t['id'] == self._record['id']), -1)
-
-    @property
-    def eaf_annotation(self) -> object | None:
-        """The EAF annotation directly referencing this token (via annotation_ref)."""
-        ann_id = self._doc._mumo['tok_ann_ref'].get(self._record['id'])
-        if ann_id and ann_id in self._doc.annotations:
-            return AnnotationView(ann_id, self._doc)
-        return None
-
-    @property
-    def tier_annotations(self) -> list:
-        """This token's direct EAF annotation and its symbolic children (POS, gloss, etc.)."""
-        ann = self.eaf_annotation
-        if ann is None:
-            return []
-        return [ann, *ann.children]
+    def utterance(self) -> Utterance:
+        return self._doc._utt_obj(self._rec['utt_id'])
 
     @property
     def time(self) -> tuple[float | None, float | None] | None:
-        """Stored token time as (start_sec, end_sec); either side may be None."""
-        return self._doc._mumo['token_times'].get(self._record['id'])
+        return self._doc._raw['token_times'].get(self._rec['id'])
 
     @property
     def bounded_time(self) -> tuple[float, float] | None:
-        """Token time clamped to utterance bounds; open boundaries filled from utterance edges."""
         utt   = self.utterance
-        utt_s = utt.start_time if utt else None
-        utt_e = utt.end_time   if utt else None
+        utt_s = utt.start_time
+        utt_e = utt.end_time
         stored = self.time
-
-        start = stored[0] if stored is not None and stored[0] is not None else utt_s
-        end   = stored[1] if stored is not None and stored[1] is not None else utt_e
-
+        start = stored[0] if stored and stored[0] is not None else utt_s
+        end   = stored[1] if stored and stored[1] is not None else utt_e
         if start is None or end is None:
             return None
         if utt_s is not None:
@@ -168,12 +121,171 @@ class TokenView:
             end = min(end, utt_e)
         return (start, end)
 
+    def __repr__(self) -> str:
+        return f'Token({self.kind}, {self.text!r})'
 
-class AnnotationView:
-    """Wraps a single ELAN annotation from pympi's tier store."""
+
+# ---------------------------------------------------------------------------
+# Utterance
+# ---------------------------------------------------------------------------
+
+class Utterance:
+    __slots__ = ('_rec', '_doc')
+
+    def __init__(self, rec: dict, doc: MumoDoc) -> None:
+        self._rec = rec
+        self._doc = doc
+
+    @property
+    def id(self) -> str:
+        return self._rec['id']
+
+    @property
+    def participant(self) -> str:
+        return self._rec['participant']
+
+    @property
+    def order(self) -> int:
+        return self._rec['order']
+
+    @property
+    def start_time(self) -> float | None:
+        ms = self._rec['start_ms']
+        return ms / 1000.0 if ms is not None else None
+
+    @property
+    def end_time(self) -> float | None:
+        ms = self._rec['end_ms']
+        return ms / 1000.0 if ms is not None else None
+
+    @property
+    def overlap_marks(self) -> list[OverlapMark]:
+        return [OverlapMark(**m)
+                for m in self._doc._raw['overlap_marks'].get(self.id, [])]
+
+    @property
+    def tokens(self) -> list[Token]:
+        return [Token(t, self._doc) for t in self._doc._tokens_for(self.id)]
+
+    @property
+    def words(self) -> list[Token]:
+        return [Token(t, self._doc) for t in self._doc._tokens_for(self.id)
+                if t['kind'] not in ('ws',)]
+
+    @property
+    def text(self) -> str:
+        return ''.join(t['text'] for t in self._doc._tokens_for(self.id))
+
+    # -- continuations -------------------------------------------------------
+
+    @property
+    def is_continuation(self) -> bool:
+        return self._rec.get('continuation_of') is not None
+
+    @property
+    def head(self) -> Utterance | None:
+        """The utterance this continues, or None if this is already the head."""
+        cid = self._rec.get('continuation_of')
+        return self._doc._utt_obj(cid) if cid else None
+
+    @property
+    def continuations(self) -> list[Utterance]:
+        """Direct continuations of this utterance (not recursive)."""
+        return self._doc._continuations_of(self.id)
+
+    @property
+    def chain(self) -> list[Utterance]:
+        """The full continuation chain: head + all continuations, in order."""
+        head = self.head or self
+        return [head] + self._doc._continuations_of(head.id)
+
+    # -- cross-refs ----------------------------------------------------------
+
+    @property
+    def textlets(self) -> list[Textlet]:
+        return [tl for tl in self._doc.textlets if tl.utterance.id == self.id]
+
+    @property
+    def patterns(self) -> list[Pattern]:
+        return self._doc._patterns_for_utt(self.id)
+
+    @property
+    def eaf_annotation(self) -> EafAnnotation | None:
+        ann_id = self._doc._raw['utt_ann_ref'].get(self.id)
+        if ann_id and ann_id in self._doc._elan.annotations:
+            return EafAnnotation(ann_id, self._doc)
+        return None
+
+    def __repr__(self) -> str:
+        cont = ' (continuation)' if self.is_continuation else ''
+        return f'Utterance({self.participant!r}, {self.text[:40]!r}{cont})'
+
+
+# ---------------------------------------------------------------------------
+# Textlet
+# ---------------------------------------------------------------------------
+
+class Textlet:
+    __slots__ = ('_rec', '_doc')
+
+    def __init__(self, rec: dict, doc: MumoDoc) -> None:
+        self._rec = rec
+        self._doc = doc
+
+    @property
+    def id(self) -> str:
+        return self._rec['id']
+
+    @property
+    def type(self) -> str:
+        return self._rec.get('type', '')
+
+    @property
+    def _mark(self) -> dict | None:
+        return self._doc._raw['marks'].get(self._rec['mark_id'])
+
+    @property
+    def utterance(self) -> Utterance:
+        mark = self._mark
+        if mark:
+            return self._doc._utt_obj(mark['block_id'])
+        raise ValueError(f'Textlet {self.id} has no mark')
+
+    @property
+    def start(self) -> int:
+        mark = self._mark
+        return mark['start'] if mark else 0
+
+    @property
+    def end(self) -> int:
+        mark = self._mark
+        return mark['end'] if mark else 0
+
+    @property
+    def text(self) -> str:
+        mark = self._mark
+        if not mark:
+            return ''
+        utt = self._doc._utt_obj(mark['block_id'])
+        return utt.text[mark['start']:mark['end']]
+
+    @property
+    def patterns(self) -> list[Pattern]:
+        return self._doc._patterns_for_textlet(self.id)
+
+    def __repr__(self) -> str:
+        return f'Textlet({self.text!r})'
+
+
+# ---------------------------------------------------------------------------
+# EafAnnotation
+# ---------------------------------------------------------------------------
+
+class EafAnnotation:
+    __slots__ = ('_id', '_doc')
 
     def __init__(self, ann_id: str, doc: MumoDoc) -> None:
-        self._id = ann_id
+        self._id  = ann_id
         self._doc = doc
 
     @property
@@ -182,11 +294,11 @@ class AnnotationView:
 
     @property
     def tier_name(self) -> str:
-        return self._doc.annotations[self._id]
+        return self._doc._elan.annotations[self._id]
 
     @property
     def value(self) -> str:
-        aligned, ref, _, _ = self._doc.tiers[self.tier_name]
+        aligned, ref, _, _ = self._doc._elan.tiers[self.tier_name]
         if self._id in aligned:
             return aligned[self._id][2] or ''
         if self._id in ref:
@@ -195,356 +307,345 @@ class AnnotationView:
 
     @property
     def time(self) -> tuple[float, float] | None:
-        return self._doc._resolve_ann_time(self._id, set())
+        return self._doc._resolve_eaf_time(self._id, set())
 
     @property
-    def parent(self) -> AnnotationView | None:
-        _, ref, _, _ = self._doc.tiers[self.tier_name]
+    def parent(self) -> EafAnnotation | None:
+        _, ref, _, _ = self._doc._elan.tiers[self.tier_name]
         if self._id in ref:
-            parent_id = ref[self._id][0]
-            if parent_id and parent_id in self._doc.annotations:
-                return AnnotationView(parent_id, self._doc)
+            pid = ref[self._id][0]
+            if pid and pid in self._doc._elan.annotations:
+                return EafAnnotation(pid, self._doc)
         return None
 
     @property
-    def children(self) -> list[AnnotationView]:
+    def children(self) -> list[EafAnnotation]:
         result = []
-        for (_, ref, _, _) in self._doc.tiers.values():
+        for (_, ref, _, _) in self._doc._elan.tiers.values():
             for aid, (parent_id, *_) in ref.items():
                 if parent_id == self._id:
-                    result.append(AnnotationView(aid, self._doc))
+                    result.append(EafAnnotation(aid, self._doc))
         return result
 
-    @property
-    def constraint(self) -> str | None:
-        _, _, attrs, _ = self._doc.tiers[self.tier_name]
-        lt_id = attrs.get('LINGUISTIC_TYPE_REF')
-        if lt_id and lt_id in self._doc.linguistic_types:
-            return self._doc.linguistic_types[lt_id].get('CONSTRAINTS')
-        return None
+    def __repr__(self) -> str:
+        return f'EafAnnotation({self.tier_name!r}, {self.value!r})'
+
+
+# ---------------------------------------------------------------------------
+# PatternSchema / SlotSchema / MetricSchema
+# ---------------------------------------------------------------------------
+
+class MetricSchema:
+    __slots__ = ('_rec',)
+
+    def __init__(self, rec: dict) -> None:
+        self._rec = rec
 
     @property
-    def utterance(self) -> object | None:
-        """The mumo utterance whose time span contains this annotation."""
-        t = self.time
-        if t is None:
+    def id(self) -> str:
+        return self._rec['id']
+
+    @property
+    def name(self) -> str:
+        return self._rec['name']
+
+    @property
+    def type(self) -> str:
+        return self._rec.get('type', 'text')
+
+    def __repr__(self) -> str:
+        return f'MetricSchema({self.name!r})'
+
+
+class SlotSchema:
+    __slots__ = ('_rec',)
+
+    def __init__(self, rec: dict) -> None:
+        self._rec = rec
+
+    @property
+    def id(self) -> str:
+        return self._rec['id']
+
+    @property
+    def name(self) -> str:
+        return self._rec['name']
+
+    @property
+    def label(self) -> str | None:
+        return self._rec.get('label')
+
+    @property
+    def anchor_kind(self) -> str:
+        return self._rec.get('anchor_kind', 'textlet')
+
+    @property
+    def required(self) -> bool:
+        return self._rec.get('required', False)
+
+    @property
+    def variadic(self) -> bool:
+        return self._rec.get('variadic', False)
+
+    @property
+    def metrics(self) -> list[MetricSchema]:
+        return [MetricSchema(m) for m in self._rec.get('metrics', [])]
+
+    def __repr__(self) -> str:
+        return f'SlotSchema({self.name!r}, anchor_kind={self.anchor_kind!r})'
+
+
+class PatternSchema:
+    __slots__ = ('_rec',)
+
+    def __init__(self, rec: dict) -> None:
+        self._rec = rec
+
+    @property
+    def id(self) -> str:
+        return self._rec['id']
+
+    @property
+    def name(self) -> str:
+        return self._rec['name']
+
+    @property
+    def description(self) -> str | None:
+        return self._rec.get('description')
+
+    @property
+    def color(self) -> int | None:
+        return self._rec.get('color')
+
+    @property
+    def hotkey(self) -> str | None:
+        return self._rec.get('hotkey')
+
+    @property
+    def slots(self) -> list[SlotSchema]:
+        return [SlotSchema(s) for s in self._rec.get('slots', [])]
+
+    def slot(self, name: str) -> SlotSchema | None:
+        return next((s for s in self.slots if s.name == name or s.label == name), None)
+
+    def __repr__(self) -> str:
+        return f'PatternSchema({self.name!r})'
+
+
+# ---------------------------------------------------------------------------
+# MetricValue
+# ---------------------------------------------------------------------------
+
+class MetricValue:
+    __slots__ = ('_rec', '_slot_schema')
+
+    def __init__(self, rec: dict, slot_schema: SlotSchema | None) -> None:
+        self._rec         = rec
+        self._slot_schema = slot_schema
+
+    @property
+    def schema_id(self) -> str:
+        return self._rec['schema_id']
+
+    @property
+    def name(self) -> str | None:
+        if self._slot_schema is None:
             return None
-        s, e = t
-        for utt in self._doc.all_utterances():
-            us, ue = utt.start_time, utt.end_time
-            if us is not None and ue is not None and us <= e and ue >= s:
+        m = next((m for m in self._slot_schema.metrics if m.id == self.schema_id), None)
+        return m.name if m else None
+
+    @property
+    def value(self) -> str | None:
+        return self._rec.get('value')
+
+    def __repr__(self) -> str:
+        label = self.name or self.schema_id[:8]
+        return f'MetricValue({label!r}={self.value!r})'
+
+
+# ---------------------------------------------------------------------------
+# Slot (instance)
+# ---------------------------------------------------------------------------
+
+class Slot:
+    __slots__ = ('_rec', '_schema', '_doc')
+
+    def __init__(self, rec: dict, schema: SlotSchema | None, doc: MumoDoc) -> None:
+        self._rec    = rec
+        self._schema = schema
+        self._doc    = doc
+
+    @property
+    def id(self) -> str:
+        return self._rec['id']
+
+    @property
+    def name(self) -> str | None:
+        return self._schema.name if self._schema else None
+
+    @property
+    def label(self) -> str | None:
+        return self._schema.label if self._schema else None
+
+    @property
+    def anchor_kind(self) -> str | None:
+        return self._schema.anchor_kind if self._schema else None
+
+    @property
+    def metrics(self) -> list[MetricValue]:
+        return [MetricValue(m, self._schema) for m in self._rec.get('metrics', [])]
+
+    def __getitem__(self, metric_name: str) -> str | None:
+        """slot['metric_name'] → metric value."""
+        if self._schema:
+            for ms in self._schema.metrics:
+                if ms.name == metric_name:
+                    mv = next((m for m in self._rec.get('metrics', [])
+                               if m['schema_id'] == ms.id), None)
+                    return mv['value'] if mv else None
+        return None
+
+    # -- anchor resolution ---------------------------------------------------
+
+    def _textlet_rec(self) -> dict | None:
+        aid = self._rec.get('annotation_id', '')
+        return self._doc._raw['textlets'].get(aid)
+
+    def _mark_rec(self) -> dict | None:
+        tl = self._textlet_rec()
+        return self._doc._raw['marks'].get(tl['mark_id']) if tl else None
+
+    @property
+    def utterance(self) -> Utterance | None:
+        mark = self._mark_rec()
+        if mark:
+            return self._doc._utt_obj(mark['block_id'])
+        ann_rec = self._doc._raw['annotations'].get(self._rec.get('annotation_id', ''))
+        if ann_rec:
+            uid = ann_rec['features'].get('utteranceId') or ann_rec['features'].get('blockNodeId')
+            if uid:
+                utt = self._doc._utt_obj(uid)
                 return utt
         return None
 
     @property
-    def frames(self) -> list:
-        """Frames that have a slot overlapping this annotation's time span."""
-        t = self.time
-        if t is None:
-            return []
-        return self._doc.frames_overlapping(t[0], t[1])
-
-
-class MetricValue:
-    def __init__(self, record: dict) -> None:
-        self._record = record
-
-    @property
-    def schema_id(self) -> str:
-        return self._record['schema_id']
-
-    @property
-    def value(self) -> str | None:
-        return self._record.get('value')
-
-
-class SlotView:
-    def __init__(self, instance: dict, frame_schema: dict | None, doc: MumoDoc) -> None:
-        self._instance = instance
-        self._frame_schema = frame_schema
-        self._doc = doc
-
-    @property
-    def id(self) -> str:
-        return self._instance['id']
-
-    @property
-    def schema_slot_id(self) -> str:
-        return self._instance['schema_slot_id']
-
-    @property
-    def metrics(self) -> list[MetricValue]:
-        return [MetricValue(m) for m in self._instance.get('metrics', [])]
-
-    @property
-    def schema(self) -> dict | None:
-        if self._frame_schema is None:
-            return None
-        return next(
-            (s for s in self._frame_schema['slots'] if s['id'] == self._instance['schema_slot_id']),
-            None,
-        )
-
-    @property
-    def anchor_kind(self) -> str | None:
-        """'utterance', 'textlet', 'time', or 'frame' - the discriminant for .anchor."""
-        s = self.schema
-        return s['anchor_kind'] if s else None
-
-    @property
-    def anchor(self) -> UtteranceAnchor | TextletAnchor | TimeAnchor | None:
-        """
-        The resolved content of this slot as a typed value.
-
-          UtteranceAnchor  .utterance
-          TextletAnchor    .utterance  .start  .end  .text
-          TimeAnchor       .start  .end
-        """
-        kind = self.anchor_kind
-        if kind == 'utterance':
-            utt = self.utterance
-            if utt is None:
-                return None
-            return UtteranceAnchor(kind='utterance', utterance=utt)
-        if kind == 'textlet':
-            sp = self.span
-            if sp is None:
-                return None
-            utt, start, end = sp
-            return TextletAnchor(kind='textlet', utterance=utt, start=start, end=end,
-                                 text=utt.text[start:end])
-        if kind == 'time':
-            t = self.time
-            if t is None:
-                return None
-            return TimeAnchor(kind='time', start=t[0], end=t[1])
-        return None
-
-    # -- Typed content accessors --------------------------------------------------
-
-    def _textlet(self) -> dict | None:
-        aid = self._instance.get('annotation_id', '')
-        return self._doc._mumo['textlets'].get(aid)
-
-    def _mark(self) -> dict | None:
-        tl = self._textlet()
-        if tl is None:
-            return None
-        return self._doc._mumo['marks'].get(tl['mark_id'])
-
-    @property
-    def utterance(self) -> UtteranceView | None:
-        """The utterance this slot is anchored to (via textlet mark block_id)."""
-        mark = self._mark()
-        if mark:
-            return self._doc._utterance_view(mark['block_id'])
-        # fall back to utterance/token-anchored annotation
-        aid = self._instance.get('annotation_id', '')
-        ann = self._doc._mumo['annotations'].get(aid)
-        if ann:
-            utt_id = ann['features'].get('blockNodeId') or ann['features'].get('utteranceId')
-            if utt_id:
-                return self._doc._utterance_view(utt_id)
-        return None
-
-    @property
-    def span(self) -> tuple[UtteranceView, int, int] | None:
-        """
-        (utterance, start_char, end_char) for textlet-anchored slots.
-        Character offsets are into the utterance's plain text (token concatenation).
-        Returns None if the slot has no textlet mark.
-        """
-        mark = self._mark()
-        if mark is None:
-            return None
-        utt = self._doc._utterance_view(mark['block_id'])
-        if utt is None:
-            return None
-        return (utt, mark['start'], mark['end'])
+    def textlet(self) -> Textlet | None:
+        tl = self._textlet_rec()
+        return Textlet(tl, self._doc) if tl else None
 
     @property
     def text(self) -> str | None:
-        """
-        Plain text of the slot's span, reconstructed from tokens.
-        Returns None if the slot has no textlet mark.
-        """
-        sp = self.span
-        if sp is None:
+        tl = self.textlet
+        if tl:
+            return tl.text
+        utt = self.utterance
+        return utt.text if utt else None
+
+    @property
+    def anchor(self) -> UtteranceAnchor | TextletAnchor | TimeAnchor | None:
+        kind = self.anchor_kind
+        if kind == 'utterance':
+            utt = self.utterance
+            return UtteranceAnchor(kind='utterance', utterance=utt) if utt else None
+        if kind == 'textlet':
+            tl = self.textlet
+            if tl is None:
+                return None
+            mark = self._mark_rec()
+            utt  = self.utterance
+            if mark and utt:
+                return TextletAnchor(kind='textlet', utterance=utt,
+                                     start=mark['start'], end=mark['end'],
+                                     text=tl.text)
             return None
-        utt, start, end = sp
-        full = utt.text
-        return full[start:end]
+        if kind == 'time':
+            t = self.time
+            return TimeAnchor(kind='time', start=t[0], end=t[1]) if t else None
+        return None
 
     @property
     def time(self) -> tuple[float, float] | None:
-        """
-        Resolved time span in seconds.
-        Tries: EAF annotation -> utterance time.
-        """
-        aid = self._instance.get('annotation_id', '')
-        # EAF tier annotation
-        if aid and aid in self._doc.annotations:
-            t = self._doc._resolve_ann_time(aid, set())
+        aid = self._rec.get('annotation_id', '')
+        if aid and aid in self._doc._elan.annotations:
+            t = self._doc._resolve_eaf_time(aid, set())
             if t:
                 return t
-        # derive from the utterance anchor
         utt = self.utterance
         if utt and utt.start_time is not None and utt.end_time is not None:
             return (utt.start_time, utt.end_time)
         return None
 
-    @property
-    def annotation(self) -> AnnotationView | None:
-        """The EAF tier annotation this slot points to, if any."""
-        aid = self._instance.get('annotation_id', '')
-        if aid and aid in self._doc.annotations:
-            return AnnotationView(aid, self._doc)
-        return None
-
-    def tier_annotations(self, tier: str | None = None) -> list[AnnotationView]:
-        """
-        EAF annotations for this slot via its utterance (structural path):
-        utterance -> aligned annotations -> their ref/symbolic children.
-        Falls back to time-overlap if the slot has no utterance anchor.
-        """
-        utt = self.utterance
-        if utt is not None:
-            return utt.eaf_annotations(tier=tier)
-        t = self.time
-        if t is None:
-            return []
-        return self._doc.annotations_overlapping(t[0], t[1], tier=tier)
+    def __repr__(self) -> str:
+        name = self.name or '?'
+        text = self.text
+        preview = repr(text[:30]) if text else repr(self.anchor_kind)
+        return f'Slot({name!r}, {preview})'
 
 
-class FrameView:
-    def __init__(self, record: dict, doc: MumoDoc) -> None:
-        self._record = record
+# ---------------------------------------------------------------------------
+# Pattern
+# ---------------------------------------------------------------------------
+
+class Pattern:
+    __slots__ = ('_rec', '_doc')
+
+    def __init__(self, rec: dict, doc: MumoDoc) -> None:
+        self._rec = rec
         self._doc = doc
 
     @property
     def id(self) -> str:
-        return self._record['id']
+        return self._rec['id']
+
+    @property
+    def schema(self) -> PatternSchema | None:
+        s = self._doc._raw['pattern_schemas'].get(self._rec['schema_id'])
+        return PatternSchema(s) if s else None
 
     @property
     def note(self) -> str | None:
-        return self._record.get('note')
+        return self._rec.get('note')
+
+    def _slot_schema(self, schema_slot_id: str) -> SlotSchema | None:
+        s = self.schema
+        if s is None:
+            return None
+        return next((ss for ss in s.slots if ss.id == schema_slot_id), None)
 
     @property
-    def schema(self) -> dict | None:
-        return self._doc._mumo['pattern_schemas'].get(self._record['schema_id'])
+    def slots(self) -> list[Slot]:
+        return [Slot(s, self._slot_schema(s['schema_slot_id']), self._doc)
+                for s in self._rec['slots']]
 
-    @property
-    def slots(self) -> list[SlotView]:
-        schema = self.schema
-        return [SlotView(s, schema, self._doc) for s in self._record['slots']]
-
-    def slot(self, name_or_index: str | int) -> SlotView | None:
+    def slot(self, name: str) -> Slot | None:
+        """Get a slot by its schema slot name or label."""
         schema = self.schema
         if schema is None:
             return None
-        if isinstance(name_or_index, int):
-            slot_defs = schema['slots']
-            if name_or_index >= len(slot_defs):
-                return None
-            slot_def = slot_defs[name_or_index]
-        else:
-            slot_def = next(
-                (s for s in schema['slots']
-                 if s['name'] == name_or_index or s.get('label') == name_or_index),
-                None,
-            )
-        if slot_def is None:
+        ss = schema.slot(name)
+        if ss is None:
             return None
-        instance = next(
-            (s for s in self._record['slots'] if s['schema_slot_id'] == slot_def['id']),
-            None,
-        )
-        if instance is None:
-            return None
-        return SlotView(instance, schema, self._doc)
+        rec = next((s for s in self._rec['slots'] if s['schema_slot_id'] == ss.id), None)
+        return Slot(rec, ss, self._doc) if rec else None
 
-    @property
-    def time(self) -> tuple[float, float] | None:
-        """Bounding time box spanning all slot times in this frame."""
-        start = end = None
-        for sv in self.slots:
-            t = sv.time
-            if t is None:
-                continue
-            if start is None or t[0] < start:
-                start = t[0]
-            if end is None or t[1] > end:
-                end = t[1]
-        if start is None or end is None:
-            return None
-        return (start, end)
+    def __getitem__(self, name: str) -> Slot | None:
+        return self.slot(name)
 
-    def tier_annotations(self, tier: str | None = None) -> list[AnnotationView]:
-        """EAF annotations overlapping any slot in this frame, deduplicated."""
-        seen: set = set()
-        result = []
-        for sv in self.slots:
-            for av in sv.tier_annotations(tier=tier):
-                if av.id not in seen:
-                    seen.add(av.id)
-                    result.append(av)
-        return result
+    def __iter__(self) -> Iterator[Slot]:
+        return iter(self.slots)
+
+    def __repr__(self) -> str:
+        schema_name = self.schema.name if self.schema else '?'
+        return f'Pattern({schema_name!r}, {len(self._rec["slots"])} slot(s))'
 
 
-class TextletView:
-    """Wraps a mm:textlet - a reified, named text selection."""
+# ---------------------------------------------------------------------------
+# Backward-compat aliases
+# ---------------------------------------------------------------------------
 
-    def __init__(self, record: dict, doc: MumoDoc) -> None:
-        self._record = record
-        self._doc = doc
-
-    @property
-    def id(self) -> str:
-        return self._record['id']
-
-    @property
-    def mark(self) -> dict | None:
-        return self._doc._mumo['marks'].get(self._record['mark_id'])
-
-    @property
-    def utterance(self) -> UtteranceView | None:
-        """The utterance this textlet is anchored to."""
-        mark = self.mark
-        if mark:
-            return self._doc._utterance_view(mark['block_id'])
-        return None
-
-    @property
-    def span(self) -> tuple[UtteranceView, int, int] | None:
-        """(utterance, start_char, end_char) from the textlet's mark."""
-        mark = self.mark
-        if mark is None:
-            return None
-        utt = self._doc._utterance_view(mark['block_id'])
-        if utt is None:
-            return None
-        return (utt, mark['start'], mark['end'])
-
-    @property
-    def text(self) -> str | None:
-        """The plain text this textlet covers."""
-        sp = self.span
-        if sp is None:
-            return None
-        utt, start, end = sp
-        return utt.text[start:end]
-
-    @property
-    def frames(self) -> list[FrameView]:
-        """All frames that have a slot referencing this textlet."""
-        return self._doc.frames_for_textlet(self._record['id'])
-
-    def tier_annotations(self, tier: str | None = None) -> list[AnnotationView]:
-        """EAF annotations that overlap the utterance time of this textlet."""
-        utt = self.utterance
-        if utt is None:
-            return []
-        s, e = utt.start_time, utt.end_time
-        if s is None or e is None:
-            return []
-        return self._doc.annotations_overlapping(s, e, tier=tier)
+PatternView  = Pattern
+FrameView    = Pattern
+UtteranceView = Utterance
+TokenView    = Token
+TextletView  = Textlet
+SlotView     = Slot

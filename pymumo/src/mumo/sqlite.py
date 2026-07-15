@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS tokens (
   FOREIGN KEY(utterance_id) REFERENCES utterances(id)
 );
 
-CREATE TABLE IF NOT EXISTS frame_schemas (
+CREATE TABLE IF NOT EXISTS pattern_schemas (
   id           TEXT PRIMARY KEY,
   document_id  TEXT NOT NULL,
   name         TEXT,
@@ -65,24 +65,24 @@ CREATE TABLE IF NOT EXISTS slot_schemas (
   anchor_kind      TEXT,
   required         INTEGER,
   variadic         INTEGER,
-  FOREIGN KEY(frame_schema_id) REFERENCES frame_schemas(id)
+  FOREIGN KEY(frame_schema_id) REFERENCES pattern_schemas(id)
 );
 
-CREATE TABLE IF NOT EXISTS frames (
+CREATE TABLE IF NOT EXISTS patterns (
   id           TEXT PRIMARY KEY,
   document_id  TEXT NOT NULL,
   schema_id    TEXT NOT NULL,
   note         TEXT,
   FOREIGN KEY(document_id) REFERENCES documents(id),
-  FOREIGN KEY(schema_id)   REFERENCES frame_schemas(id)
+  FOREIGN KEY(schema_id)   REFERENCES pattern_schemas(id)
 );
 
 CREATE TABLE IF NOT EXISTS slot_instances (
   id               TEXT PRIMARY KEY,
-  frame_id         TEXT NOT NULL,
+  pattern_id       TEXT NOT NULL,
   schema_slot_id   TEXT NOT NULL,
   annotation_id    TEXT,
-  FOREIGN KEY(frame_id) REFERENCES frames(id)
+  FOREIGN KEY(pattern_id) REFERENCES patterns(id)
 );
 
 CREATE TABLE IF NOT EXISTS metric_values (
@@ -144,7 +144,7 @@ def export_to_sqlite(
         )
 
         # utterances
-        for utt in doc._mumo['utterances']:
+        for utt in doc._raw['utterances']:
             s = utt['start_ms'] / 1000.0 if utt['start_ms'] is not None else None
             e = utt['end_ms']   / 1000.0 if utt['end_ms']   is not None else None
             con.execute(
@@ -155,9 +155,9 @@ def export_to_sqlite(
             )
 
         # tokens
-        token_times = doc._mumo['token_times']
+        token_times = doc._raw['token_times']
         pos_counter: dict[str, int] = {}
-        for tok in doc._mumo['tokens']:
+        for tok in doc._raw['tokens']:
             uid = tok['utt_id']
             pos = pos_counter.get(uid, 0)
             pos_counter[uid] = pos + 1
@@ -171,9 +171,9 @@ def export_to_sqlite(
             )
 
         # frame schemas and slot schemas
-        for schema in doc._mumo['frame_schemas'].values():
+        for schema in doc._raw['pattern_schemas'].values():
             con.execute(
-                'INSERT OR REPLACE INTO frame_schemas '
+                'INSERT OR REPLACE INTO pattern_schemas '
                 '(id, document_id, name, description, color, hotkey) VALUES (?,?,?,?,?,?)',
                 (schema['id'], doc_id, schema['name'],
                  schema.get('description'), schema.get('color'), schema.get('hotkey')),
@@ -190,15 +190,15 @@ def export_to_sqlite(
                 )
 
         # frames, slot instances, metric values
-        for frame in doc._mumo['frames'].values():
+        for frame in doc._raw['patterns'].values():
             con.execute(
-                'INSERT OR REPLACE INTO frames (id, document_id, schema_id, note) VALUES (?,?,?,?)',
+                'INSERT OR REPLACE INTO patterns (id, document_id, schema_id, note) VALUES (?,?,?,?)',
                 (frame['id'], doc_id, frame['schema_id'], frame.get('note')),
             )
             for slot in frame['slots']:
                 con.execute(
                     'INSERT OR REPLACE INTO slot_instances '
-                    '(id, frame_id, schema_slot_id, annotation_id) VALUES (?,?,?,?)',
+                    '(id, pattern_id, schema_slot_id, annotation_id) VALUES (?,?,?,?)',
                     (slot['id'], frame['id'], slot['schema_slot_id'],
                      slot.get('annotation_id') or None),
                 )

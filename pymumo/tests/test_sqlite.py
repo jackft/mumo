@@ -10,8 +10,8 @@ def test_export_creates_all_tables(doc, tmp_path):
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()}
     con.close()
-    for expected in ('documents', 'utterances', 'tokens', 'frame_schemas',
-                     'frames', 'slot_instances', 'eaf_tiers', 'eaf_annotations'):
+    for expected in ('documents', 'utterances', 'tokens', 'pattern_schemas',
+                     'patterns', 'slot_instances', 'eaf_tiers', 'eaf_annotations'):
         assert expected in tables, f'missing table: {expected}'
 
 
@@ -30,7 +30,7 @@ def test_export_utterance_count(doc, tmp_path):
     con = sqlite3.connect(db)
     count = con.execute("SELECT COUNT(*) FROM utterances WHERE document_id='test'").fetchone()[0]
     con.close()
-    assert count == len(doc.all_utterances())
+    assert count == len(doc.utterances)
 
 
 def test_export_token_count(doc, tmp_path):
@@ -39,7 +39,7 @@ def test_export_token_count(doc, tmp_path):
     con = sqlite3.connect(db)
     count = con.execute("SELECT COUNT(*) FROM tokens WHERE document_id='test'").fetchone()[0]
     con.close()
-    assert count == len(doc.all_tokens())
+    assert count == len(doc._raw['tokens'])
 
 
 def test_export_eaf_annotation_count(doc, tmp_path):
@@ -50,7 +50,7 @@ def test_export_eaf_annotation_count(doc, tmp_path):
         "SELECT COUNT(*) FROM eaf_annotations WHERE document_id='test'"
     ).fetchone()[0]
     con.close()
-    assert count == len(doc.all_eaf_annotations())
+    assert count == len(doc.eaf_annotations)
 
 
 def test_export_idempotent(doc, tmp_path):
@@ -60,7 +60,7 @@ def test_export_idempotent(doc, tmp_path):
     con = sqlite3.connect(db)
     count = con.execute("SELECT COUNT(*) FROM utterances WHERE document_id='test'").fetchone()[0]
     con.close()
-    assert count == len(doc.all_utterances())
+    assert count == len(doc.utterances)
 
 
 def test_token_positions_are_sequential_per_utterance(doc, tmp_path):

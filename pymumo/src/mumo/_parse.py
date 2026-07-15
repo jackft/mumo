@@ -20,41 +20,17 @@ def _ms_to_sec(val: str | None) -> float | None:
 
 
 def parse_mumo_data(file_path: str) -> dict:
-    """
-    Parse the mm:mumo_data block from an MMEAF file.
-
-    Returns a dict with:
-      utterances      - list of {id, participant, start_ms, end_ms, order}
-      tokens          - list of {id, utt_id, kind, text, start_offset, end_offset}
-      token_times     - {token_id: (start_sec | None, end_sec | None)}
-      utt_ann_ref     - {utt_id: annotation_id}    utterance -> annotation back-ref
-      tok_ann_ref     - {token_id: annotation_id}  token -> annotation back-ref
-      marks           - {mark_id: {id, block_id, start, end}}
-      textlets        - {textlet_id: {id, mark_id, type, features}}
-      annotations     - {ann_id: {id, type, features}}  utterance/token-anchored
-      pattern_schemas - {schema_id: {id, name, description, color, hotkey, slots}}
-      patterns        - {pattern_id: {id, schema_id, note, slots}}
-    """
     tree = ET.parse(file_path)
     root = tree.getroot()
 
     mm_el = root.find(_q('mumo_data'))
     if mm_el is None:
-        return {
-            'utterances': [], 'tokens': [], 'token_times': {},
-            'utt_ann_ref': {}, 'tok_ann_ref': {},
-            'marks': {}, 'textlets': {}, 'annotations': {},
-            'pattern_schemas': {}, 'patterns': {},
-        }
+        return _empty()
 
-    result: dict = {
-        'utterances': [], 'tokens': [], 'token_times': {},
-        'utt_ann_ref': {}, 'tok_ann_ref': {},
-        'marks': {}, 'textlets': {}, 'annotations': {},
-        'pattern_schemas': {}, 'patterns': {},
-    }
-
+    result = _empty()
+    _parse_id_map(mm_el, result)
     _parse_transcript_structure(mm_el, result)
+    _populate_ann_refs(result)
     _parse_marks(mm_el, result)
     _parse_textlets(mm_el, result)
     _parse_annotations(mm_el, result)
@@ -63,7 +39,46 @@ def parse_mumo_data(file_path: str) -> dict:
     return result
 
 
+def _empty() -> dict:
+    return {
+        'utterances': [], 'tokens': [], 'token_times': {},
+        'utt_ann_ref': {}, 'tok_ann_ref': {},
+        'overlap_marks': {},  # block_id → list[{group_id, kind, char_offset}]
+        'marks': {}, 'textlets': {}, 'annotations': {},
+        'pattern_schemas': {}, 'patterns': {},
+        '_id_map': {},
+    }
+
+
+# -- id_map ------------------------------------------------------------------
+
+def _parse_id_map(mm_el: ET.Element, result: dict) -> None:
+    """Build mumo-id → EAF-annotation-id reverse map from mm:id_map."""
+    id_map_el = mm_el.find(_q('id_map'))
+    if id_map_el is None:
+        return
+    # result['_id_map'] is populated here and consumed when filling utt_ann_ref /
+    # tok_ann_ref after transcript_structure is parsed.
+    for entry in id_map_el.findall(_q('id')):
+        mumo_id = entry.get('id', '')
+        eaf_id  = entry.get('eaf', '')
+        if mumo_id and eaf_id:
+            result['_id_map'][mumo_id] = eaf_id
+
+
 # -- transcript_structure -----------------------------------------------------
+
+def _populate_ann_refs(result: dict) -> None:
+    """Cross-reference id_map entries against parsed utterance/token IDs."""
+    id_map = result['_id_map']
+    utt_ids = {u['id'] for u in result['utterances']}
+    tok_ids = {t['id'] for t in result['tokens']}
+    for mumo_id, eaf_id in id_map.items():
+        if mumo_id in utt_ids:
+            result['utt_ann_ref'][mumo_id] = eaf_id
+        elif mumo_id in tok_ids:
+            result['tok_ann_ref'][mumo_id] = eaf_id
+
 
 def _parse_transcript_structure(mm_el: ET.Element, result: dict) -> None:
     ts_el = mm_el.find(_q('transcript_structure'))
@@ -74,31 +89,41 @@ def _parse_transcript_structure(mm_el: ET.Element, result: dict) -> None:
 
 
 def _parse_utt(utt_el: ET.Element, default_order: int, result: dict) -> None:
-    block_id    = utt_el.get('block_id', '')
-    participant = utt_el.get('participant', '')
-    start_ms    = utt_el.get('start_ms')
-    end_ms      = utt_el.get('end_ms')
-    order       = int(utt_el.get('order', str(default_order)))
-    ann_ref     = utt_el.get('annotation_ref')
+    block_id        = utt_el.get('block_id', '')
+    participant     = utt_el.get('participant', '')
+    start_ms        = utt_el.get('start_ms')
+    end_ms          = utt_el.get('end_ms')
+    order           = int(utt_el.get('order', str(default_order)))
+    ann_ref         = utt_el.get('annotation_ref')
+    continuation_of = utt_el.get('continuation_of')
 
     result['utterances'].append({
-        'id':          block_id,
-        'participant': participant,
-        'start_ms':    int(start_ms) if start_ms is not None else None,
-        'end_ms':      int(end_ms)   if end_ms   is not None else None,
-        'order':       order,
+        'id':              block_id,
+        'participant':     participant,
+        'start_ms':        int(start_ms) if start_ms is not None else None,
+        'end_ms':          int(end_ms)   if end_ms   is not None else None,
+        'order':           order,
+        'continuation_of': continuation_of,
     })
     if ann_ref:
         result['utt_ann_ref'][block_id] = ann_ref
 
+    for mark_el in utt_el.findall(_q('inline_mark')):
+        if mark_el.get('type') == 'overlap_bracket':
+            result['overlap_marks'].setdefault(block_id, []).append({
+                'group_id':    mark_el.get('group_id', ''),
+                'kind':        mark_el.get('kind', ''),
+                'char_offset': int(mark_el.get('char_offset', '0')),
+            })
+
     offset = 0
     for tok_el in utt_el.findall(_q('t')):
-        kind      = tok_el.get('type', 'word')
-        tok_id    = tok_el.get('id', '')
-        text      = tok_el.text or ''
-        t_s       = tok_el.get('start_ms')
-        t_e       = tok_el.get('end_ms')
-        tok_ref   = tok_el.get('annotation_ref')
+        kind    = tok_el.get('type', 'word')
+        tok_id  = tok_el.get('id', '')
+        text    = tok_el.text or ''
+        t_s     = tok_el.get('start_ms')
+        t_e     = tok_el.get('end_ms')
+        tok_ref = tok_el.get('annotation_ref')
 
         result['tokens'].append({
             'id': tok_id, 'utt_id': block_id, 'kind': kind, 'text': text,
@@ -147,7 +172,7 @@ def _parse_textlets(mm_el: ET.Element, result: dict) -> None:
         }
 
 
-# -- annotations (utterance/token-anchored) -----------------------------------
+# -- annotations --------------------------------------------------------------
 
 def _parse_annotations(mm_el: ET.Element, result: dict) -> None:
     anns_el = mm_el.find(_q('annotations'))

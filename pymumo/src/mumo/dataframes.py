@@ -15,14 +15,12 @@ def _require_pandas():
         raise ImportError('pandas is required: pip install pandas')
 
 
-# -- frames -------------------------------------------------------------------
-
-def frames_df(doc: MumoDoc, schema: str | None = None) -> dict[str, pd.DataFrame] | pd.DataFrame:
+def patterns_df(doc: MumoDoc, schema: str | None = None) -> 'dict[str, pd.DataFrame] | pd.DataFrame':
     """
-    Build a wide-format DataFrame from frame instances, one row per frame.
+    Build a wide-format DataFrame from pattern instances, one row per pattern.
 
-    Each slot in the schema becomes a group of columns:
-      {slot}              - text content (span text, or full utterance text)
+    Each slot becomes a group of columns:
+      {slot}              - text of the anchor
       {slot}_participant  - speaker of the anchored utterance
       {slot}_start        - start time in seconds
       {slot}_end          - end time in seconds
@@ -30,101 +28,100 @@ def frames_df(doc: MumoDoc, schema: str | None = None) -> dict[str, pd.DataFrame
 
     If *schema* is given, returns a single DataFrame for that schema.
     Otherwise returns a dict {schema_name: DataFrame} for every schema
-    that has at least one frame instance.
+    that has at least one pattern instance.
     """
     pd = _require_pandas()
 
-    schemas = doc._mumo['frame_schemas']
-
     if schema is not None:
-        target = next((s for s in schemas.values() if s['name'] == schema), None)
-        if target is None:
-            raise KeyError(f'No frame schema named {schema!r}')
-        return _schema_df(doc, target, pd)
+        ps = doc.pattern_schema(schema)
+        if ps is None:
+            raise KeyError(f'No pattern schema named {schema!r}')
+        return _schema_df(doc, ps, pd)
 
-    # all schemas that have instances
+    schema_ids_with_patterns = {p._rec['schema_id'] for p in doc.patterns}
     result = {}
-    schema_ids_with_frames = {f['schema_id'] for f in doc._mumo['frames'].values()}
-    for s in schemas.values():
-        if s['id'] in schema_ids_with_frames:
-            result[s['name']] = _schema_df(doc, s, pd)
+    for ps in doc.pattern_schemas:
+        if ps.id in schema_ids_with_patterns:
+            result[ps.name] = _schema_df(doc, ps, pd)
 
     if len(result) == 1:
         return next(iter(result.values()))
     return result
 
 
-def _schema_df(doc: MumoDoc, schema: dict, pd) -> pd.DataFrame:
-    from .views import FrameView
+frames_df = patterns_df  # backward-compat alias
+
+
+def _schema_df(doc: MumoDoc, schema, pd) -> 'pd.DataFrame':
+    from .views import TextletAnchor, UtteranceAnchor, TimeAnchor
 
     rows = []
-    for frame in doc._mumo['frames'].values():
-        if frame['schema_id'] != schema['id']:
+    for pattern in doc.patterns:
+        if pattern._rec['schema_id'] != schema.id:
             continue
-        fv   = FrameView(frame, doc)
-        row: dict = {'frame_id': frame['id'], 'schema': schema['name'], 'note': frame.get('note')}
+        row: dict = {'pattern_id': pattern.id, 'schema': schema.name, 'note': pattern.note}
 
-        for slot_def in schema['slots']:
-            sv   = fv.slot(slot_def['name'])
-            name = slot_def['name']
+        for slot_def in schema.slots:
+            sv   = pattern.slot(slot_def.name)
+            name = slot_def.name
 
             if sv is None:
-                row[name]                = None
+                row[name]                  = None
                 row[f'{name}_participant'] = None
-                row[f'{name}_start']     = None
-                row[f'{name}_end']       = None
-                for m in slot_def.get('metrics', []):
-                    row[f"{name}_{m['name']}"] = None
+                row[f'{name}_start']       = None
+                row[f'{name}_end']         = None
+                for m in slot_def.metrics:
+                    row[f'{name}_{m.name}'] = None
                 continue
 
             anchor = sv.anchor
-            if anchor is not None:
-                from .views import SpanAnchor, UtteranceAnchor, TimeAnchor
-                if isinstance(anchor, (SpanAnchor, UtteranceAnchor)):
-                    utt = anchor.utterance
-                    row[name]                  = anchor.text if isinstance(anchor, SpanAnchor) else utt.text
-                    row[f'{name}_participant'] = utt.participant
-                    row[f'{name}_start']       = utt.start_time
-                    row[f'{name}_end']         = utt.end_time
-                elif isinstance(anchor, TimeAnchor):
-                    row[name]                  = None
-                    row[f'{name}_participant'] = None
-                    row[f'{name}_start']       = anchor.start
-                    row[f'{name}_end']         = anchor.end
-            else:
-                row[name]                = None
+            if isinstance(anchor, (TextletAnchor, UtteranceAnchor)):
+                utt = anchor.utterance
+                row[name]                  = anchor.text if isinstance(anchor, TextletAnchor) else utt.text
+                row[f'{name}_participant'] = utt.participant
+                row[f'{name}_start']       = utt.start_time
+                row[f'{name}_end']         = utt.end_time
+            elif isinstance(anchor, TimeAnchor):
+                row[name]                  = None
                 row[f'{name}_participant'] = None
-                row[f'{name}_start']     = None
-                row[f'{name}_end']       = None
+                row[f'{name}_start']       = anchor.start
+                row[f'{name}_end']         = anchor.end
+            else:
+                row[name]                  = None
+                row[f'{name}_participant'] = None
+                row[f'{name}_start']       = None
+                row[f'{name}_end']         = None
 
             for mv in sv.metrics:
-                schema_slot = sv.schema or {}
-                metric_def  = next((m for m in schema_slot.get('metrics', [])
-                                    if m['id'] == mv.schema_id), None)
-                col = f"{name}_{metric_def['name']}" if metric_def else f'{name}_metric_{mv.schema_id[:8]}'
+                col = f'{name}_{mv.name}' if mv.name else f'{name}_metric_{mv.schema_id[:8]}'
                 row[col] = mv.value
 
-            # fill any metric columns that weren't covered
-            for m in slot_def.get('metrics', []):
-                col = f"{name}_{m['name']}"
+            for m in slot_def.metrics:
+                col = f'{name}_{m.name}'
                 if col not in row:
                     row[col] = None
 
         rows.append(row)
 
+    if not rows:
+        base_cols = ['pattern_id', 'schema', 'note']
+        slot_cols: list[str] = []
+        for slot_def in schema.slots:
+            slot_cols += [slot_def.name, f'{slot_def.name}_participant',
+                          f'{slot_def.name}_start', f'{slot_def.name}_end']
+            for m in slot_def.metrics:
+                slot_cols.append(f'{slot_def.name}_{m.name}')
+        return pd.DataFrame(columns=base_cols + slot_cols)
+
     return pd.DataFrame(rows)
 
 
-# -- annotations --------------------------------------------------------------
-
-def annotations_df(doc: MumoDoc, tier: str | None = None) -> pd.DataFrame:
+def annotations_df(doc: MumoDoc, tier: str | None = None) -> 'pd.DataFrame':
     """
     Build a DataFrame with one row per EAF annotation.
 
     Columns: id, tier, participant, constraint, value,
              start_time, end_time, parent_id.
-
-    If *tier* is given, only that tier's annotations are included.
     """
     pd = _require_pandas()
 
