@@ -38,7 +38,7 @@
     selectedPatternId?: ID | null
     myAuthorId?: string
     onSelectPattern?: (id: ID | null) => void
-    onRequestSlotFill: (patternId: ID, slotSchemaId: ID, anchorKind: 'span' | 'utterance' | 'pattern' | 'any') => void
+    onRequestSlotFill: (patternId: ID, slotSchemaId: ID, anchorKind: 'textlet' | 'utterance' | 'tier' | 'pattern' | 'any', tierId?: ID) => void
     onCancelSlotFill: () => void
     onFillWithPattern?: (patternId: ID) => void
     onHoverSlot?: (slotSchemaId: ID | null) => void
@@ -211,7 +211,7 @@
       const n = parseInt(e.key)
       if (!isNaN(n) && n >= 1 && n <= selectedSchema.slots.length) {
         const slot = selectedSchema.slots[n - 1]!
-        onRequestSlotFill(selectedPatternId, slot.id, slot.anchorKind)
+        onRequestSlotFill(selectedPatternId, slot.id, slot.anchorKind, slot.tierId)
         e.preventDefault()
       }
     }
@@ -262,6 +262,7 @@
     if (uttId) return getUttLabel(doc, uttId)
     const tokenId = ann.features.tokenId as ID | undefined
     if (tokenId) return getTokenText(tokenId, tokenStore, doc, ann.features)
+    if (ann.type) return ann.type
     return '—'
   }
 
@@ -488,16 +489,21 @@
                     {#if filling}
                       <button class="slot-btn active" onclick={() => onCancelSlotFill()}>cancel</button>
                     {:else if slotSchema.variadic}
-                      <button class="slot-btn fill" onclick={() => onRequestSlotFill(pattern.id, slotSchema.id, slotSchema.anchorKind)}>+ add</button>
+                      <button class="slot-btn fill" onclick={() => onRequestSlotFill(pattern.id, slotSchema.id, slotSchema.anchorKind, slotSchema.tierId)}>+ add</button>
                     {:else}
                       {@const inst = getSlotInstance(slotSchema.id)}
-                      <button class="slot-btn fill" title="Click to fill ({slotSchema.anchorKind})" onclick={() => onRequestSlotFill(pattern.id, slotSchema.id, slotSchema.anchorKind)}>fill</button>
+                      <button class="slot-btn fill" title="Click to fill ({slotSchema.anchorKind})" onclick={() => onRequestSlotFill(pattern.id, slotSchema.id, slotSchema.anchorKind, slotSchema.tierId)}>fill</button>
                       {#if inst}
                         <button class="slot-btn unfill" onclick={() => removeSlotInstance(inst.id)}>unfill</button>
                       {/if}
                     {/if}
                   </div>
                   <span class="slot-label">{slotSchema.label ?? slotSchema.name}</span>
+                  <span class="slot-kind">{slotSchema.anchorKind}</span>
+                  {#if slotSchema.tierId}
+                    {@const tierDef_ = store.getTier(slotSchema.tierId)}
+                    <span class="slot-tier-badge" title={slotSchema.tierId}>{tierDef_?.name ?? slotSchema.tierId}</span>
+                  {/if}
                   {#if i < 9}<span class="slot-shortcut">{i + 1}</span>{/if}
                   {#if !slotSchema.required}<span class="slot-optional">opt</span>{/if}
                 </div>
@@ -805,10 +811,15 @@
                     {#if filling}
                       <button class="slot-btn active" onclick={() => onCancelSlotFill()}>cancel</button>
                     {:else}
-                      <button class="slot-btn fill" onclick={() => onRequestSlotFill(change.patternId, slotSchema.id, slotSchema.anchorKind)}>{slotSchema.variadic ? '+ add' : 'fill'}</button>
+                      <button class="slot-btn fill" onclick={() => onRequestSlotFill(change.patternId, slotSchema.id, slotSchema.anchorKind, slotSchema.tierId)}>{slotSchema.variadic ? '+ add' : 'fill'}</button>
                     {/if}
                   </div>
                   <span class="slot-label">{slotSchema.label ?? slotSchema.name}</span>
+                  <span class="slot-kind">{slotSchema.anchorKind}</span>
+                  {#if slotSchema.tierId}
+                    {@const tierDef__ = store.getTier(slotSchema.tierId)}
+                    <span class="slot-tier-badge" title={slotSchema.tierId}>{tierDef__?.name ?? slotSchema.tierId}</span>
+                  {/if}
                   {#if i < 9}<span class="slot-shortcut">{i + 1}</span>{/if}
                   {#if !slotSchema.required}<span class="slot-optional">opt</span>{/if}
                 </div>
@@ -1081,9 +1092,21 @@
   }
   .slot-block.filling { background: #fffdf4; border-radius: var(--radius-xs); padding: 0.2rem 0.3rem; margin: 0 -0.3rem; }
 
-  .slot-header { display: flex; align-items: center; gap: 0.5rem; flex-wrap: nowrap; }
+  .slot-header { display: flex; align-items: center; gap: 0.35rem; flex-wrap: nowrap; }
   .slot-btns { display: flex; gap: 0.2rem; flex-shrink: 0; }
   .slot-label { font-weight: 500; font-size: var(--font-sm); flex: 1; text-align: right; }
+  .slot-kind {
+    font-size: 0.6rem; color: var(--color-text-muted);
+    border: 1px solid var(--color-border); border-radius: 2px;
+    padding: 0 0.22rem; line-height: 1.5; flex-shrink: 0;
+    font-style: italic;
+  }
+  .slot-tier-badge {
+    font-size: 0.6rem; color: var(--color-active-dark);
+    background: var(--color-active-light); border: 1px solid var(--color-active);
+    border-radius: 2px; padding: 0 0.22rem; line-height: 1.5; flex-shrink: 0;
+    max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .slot-shortcut {
     font-size: 0.62rem; color: var(--color-text-placeholder);
     border: 1px solid var(--color-border); border-radius: 2px;

@@ -11,7 +11,7 @@ describe('template apply end-to-end', () => {
     const transcriptStore = makeStore()
     transcriptStore.addLinguisticType('default-lt')
     transcriptStore.addLinguisticType('symbolic_association', { constraint: 'symbolic_association' })
-    const repairSchema = transcriptStore.addPatternSchema({ name: 'repair', slots: [] })
+    const _repairSchema = transcriptStore.addPatternSchema({ name: 'repair', slots: [] })
 
     // Round-trip through MMEAF serialization (same path as the app's MMEAF importer)
     const emptyDoc = { type: 'doc', content: [] } as never

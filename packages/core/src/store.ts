@@ -107,7 +107,8 @@ export interface SlotSchema {
   label?: string
   variadic?: boolean
   style?: import('./types.js').SlotTextStyle
-  anchorKind: 'span' | 'utterance' | 'pattern' | 'any'
+  anchorKind: 'textlet' | 'utterance' | 'tier' | 'pattern' | 'any'
+  tierId?: ID
   required?: boolean
   metrics: MetricSchema[]
 }

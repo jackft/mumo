@@ -68,11 +68,19 @@ export function docToTimeline(
   const tokenNodeLookup = new Map<string, { start: number; end: number }>()
   const blockNodeLookup  = new Map<string, { start: number; end: number }>()
 
-  // lt-token TierDefs (token tiers imported from EAF) become the token lane for their participant
-  const participantTokenTier = new Map<string, TierDef>()
+  // lt-token TierDefs → block lane ID they belong to.
+  // Named (EAF-imported) token tiers always correspond to the default speech lane (utterance:participant).
+  // Generic tiers created by ensureWordTier are named tokens:${blockLaneId} and keyed that way.
+  const blockLaneTokenTier = new Map<string, TierDef>()
   for (const tier of tiers) {
-    if (isTokenLtId(tier.linguisticTypeId) && tier.participant)
-      participantTokenTier.set(tier.participant, tier)
+    if (!isTokenLtId(tier.linguisticTypeId) || !tier.participant) continue
+    if (tier.name.startsWith('tokens:')) {
+      // tokens:${blockLaneId} — explicit block-lane association
+      blockLaneTokenTier.set(tier.name.slice('tokens:'.length), tier)
+    } else {
+      // EAF-imported tier (arbitrary name) — associate with default speech lane
+      blockLaneTokenTier.set(uttLaneId('', tier.participant), tier)
+    }
   }
   const namedTokenLaneIds = new Set<string>()
 
@@ -86,6 +94,19 @@ export function docToTimeline(
     }
   }
 
+  // Pre-pass: collect continuation nodes by head ID (in doc order).
+  // Continuations are skipped in the main loop so their text and tokens must be
+  // merged into the head bar.
+  const continuationNodes = new Map<string, Node[]>()
+  doc.forEach((node) => {
+    if (node.type.name !== 'utterance') return
+    const headId = node.attrs.continuationOfId as string | null
+    if (!headId) return
+    const arr = continuationNodes.get(headId) ?? []
+    arr.push(node)
+    continuationNodes.set(headId, arr)
+  })
+
   let prevEnd = 0
 
   doc.forEach((node) => {
@@ -96,15 +117,17 @@ export function docToTimeline(
         node.attrs.startTimeSeconds === null &&
         !node.attrs.participant
       ) return
+      // Continuation blocks share their head's timeline entry — no independent bar.
+      if (node.attrs.continuationOfId) return
 
       const participant: string = (node.attrs.participant as string | null) ?? ''
       const tierAttr = uttTierBase(node.attrs.tier as string | undefined)
       const laneId = uttLaneId(tierAttr, participant)
-      // Token lane: tokens:<participant> or tokens:unknown (flat, no nested prefix)
-      const tokenTierDef = participantTokenTier.get(participant)
+      // Each block tier gets its own token sub-lane keyed by the block lane ID.
+      const tokenTierDef = blockLaneTokenTier.get(laneId)
       const tokenLaneId = tokenTierDef
         ? `ann:${tokenTierDef.id}`
-        : (participant ? `tokens:${participant}` : 'tokens:unknown')
+        : (participant ? `tokens:${laneId}` : 'tokens:unknown')
 
       const c = colorFor(tierAttr || participant)
       if (!laneMap.has(laneId)) {
@@ -136,12 +159,14 @@ export function docToTimeline(
       const uttColor = laneMap.get(laneId)!.color
       const uttSugEntry = uttSugMap.get(node.attrs.id as string)
       blockNodeLookup.set(node.attrs.id as string, { start: uttStart, end: uttEnd })
+      const conts = continuationNodes.get(node.attrs.id as string) ?? []
+      const uttLabel = [node, ...conts].map(n => baseTextContent(n)).filter(Boolean).join(' ')
       bars.push({
         id: node.attrs.id,
         nodeId: node.attrs.id,
         start: uttStart,
         end: uttEnd,
-        label: baseTextContent(node),
+        label: uttLabel,
         laneId,
         type: 'utterance',
         placeholder,
@@ -165,9 +190,12 @@ export function docToTimeline(
         })
       }
 
-      const tokenNodes = (tokenStore?.getUttTokens(node.attrs.id as string) ?? [])
-        .filter(t => t.kind !== 'ws')
-        .map(t => { const time = store?.getTokenTime(t.id); return { id: t.id, text: t.text, ws: time?.start ?? null, we: time?.end ?? null } })
+      const allUttIds = [node.attrs.id as string, ...conts.map(n => n.attrs.id as string)]
+      const tokenNodes = allUttIds.flatMap(uttId =>
+        (tokenStore?.getUttTokens(uttId) ?? [])
+          .filter(t => t.kind !== 'ws')
+          .map(t => { const time = store?.getTokenTime(t.id); return { id: t.id, text: t.text, ws: time?.start ?? null, we: time?.end ?? null } })
+      )
 
       const n = tokenNodes.length
       if (n > 0) {
@@ -466,6 +494,18 @@ export function docToTimeline(
 
   }
 
+  // Show empty participant lanes for isUttTier TierDefs that have no PM-derived blocks yet.
+  // This lets newly-created block tiers appear in the timeline before any blocks are inserted.
+  for (const tier of tiers) {
+    if (!tier.isUttTier || !tier.participant) continue
+    const tierBase = tier.name === tier.participant ? '' : tier.name
+    const laneId = uttLaneId(tierBase, tier.participant)
+    if (!laneMap.has(laneId)) {
+      const c = colorFor(tierBase || tier.participant)
+      laneMap.set(laneId, { id: laneId, label: laneId, type: 'participant', participant: tier.participant, color: c })
+    }
+  }
+
   // Lane ordering
   // Insert viz child lanes tied to a specific participant (viz:spk:participant:type)
   function insertParticipantVizLanes(speaker: string) {
@@ -490,11 +530,19 @@ export function docToTimeline(
       // directly under their parent.
       const placed = new Set<string>()
 
-      // Seed: lt-word tiers and isUttTier tiers for this participant.
-      // isUttTier entries are invisible (skipped in the loop above) but act as transparent
-      // parents — their children (e.g. gloss tiers) should still land inside this participant block.
+      // Seed: the specific token tier backing this lane, plus isUttTier tiers for this participant.
+      // Using only the backing token tier (not all token tiers for the participant) ensures
+      // sub-tiers (e.g. POS) appear under the correct block tier's token lane, not all of them.
+      if (namedTokenLaneIds.has(id)) {
+        // Named lane: ann:${tierId} — seed that exact tier
+        const tierId = id.slice('ann:'.length)
+        placed.add(tierId)
+      } else if (id.startsWith('tokens:')) {
+        // Generic lane: tokens:${blockLaneId} — seed the tier named tokens:${blockLaneId}
+        const backing = orderedTiers.find(t => isTokenLtId(t.linguisticTypeId) && t.name === id)
+        if (backing) placed.add(backing.id)
+      }
       for (const tier of orderedTiers) {
-        if (isTokenLtId(tier.linguisticTypeId) && tier.participant === laneParticipant) placed.add(tier.id)
         if (tier.isUttTier && tier.participant === laneParticipant) placed.add(tier.id)
       }
 

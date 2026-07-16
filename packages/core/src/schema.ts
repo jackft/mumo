@@ -9,16 +9,20 @@ const utteranceNode: NodeSpec = {
   attrs: {
     id: { default: null },
     tier: { default: '' },
+    tierId: { default: null },
     participant: { default: '' },
     startTimeSeconds: { default: null },
     endTimeSeconds: { default: null },
+    continuationOfId: { default: null },
   },
   toDOM(node) {
     return ['p', {
       class: 'utt',
       'data-id': node.attrs.id,
       'data-tier': node.attrs.tier,
+      ...(node.attrs.tierId ? { 'data-tier-id': node.attrs.tierId } : {}),
       'data-participant': node.attrs.participant,
+      ...(node.attrs.continuationOfId ? { 'data-continuation-of': node.attrs.continuationOfId } : {}),
     }, 0]
   },
   parseDOM: [{
@@ -28,7 +32,9 @@ const utteranceNode: NodeSpec = {
       return {
         id: el.getAttribute('data-id'),
         tier: el.getAttribute('data-tier') ?? '',
+        tierId: el.getAttribute('data-tier-id') ?? null,
         participant: el.getAttribute('data-participant') ?? '',
+        continuationOfId: el.getAttribute('data-continuation-of') ?? null,
       }
     },
   }],
@@ -313,16 +319,51 @@ const commentNode: NodeSpec = {
   }],
 }
 
-const utteranceWithOverlap = { ...utteranceNode, content: '(text | overlap_bracket | inline_ann)*' }
+const anchorNode: NodeSpec = {
+  inline: true,
+  atom: true,
+  selectable: true,
+  group: 'inline',
+  attrs: {
+    id: {},
+    delimiter: {},
+    kind: {},  // 'start' | 'end'
+  },
+  toDOM(node) {
+    const kind = node.attrs.kind as string
+    return ['span', {
+      class: `anchor-node anchor-node--${kind}`,
+      'data-anchor-id': node.attrs.id,
+      'data-anchor-delimiter': node.attrs.delimiter,
+      'data-anchor-kind': kind,
+      contenteditable: 'false',
+      title: `anchor ${kind}: ${node.attrs.id as string}`,
+    }, node.attrs.delimiter as string]
+  },
+  parseDOM: [{
+    tag: 'span.anchor-node',
+    getAttrs(dom) {
+      const el = dom as Element
+      return {
+        id: el.getAttribute('data-anchor-id') ?? '',
+        delimiter: el.getAttribute('data-anchor-delimiter') ?? '*',
+        kind: el.getAttribute('data-anchor-kind') ?? 'start',
+      }
+    },
+  }],
+}
+
+const utteranceWithInlines = { ...utteranceNode, content: '(text | overlap_bracket | anchor | inline_ann)*' }
 
 export const schema = new Schema({
   nodes: {
     doc: { content: '(utterance | visualization | comment)+' },
     text: { group: 'inline' },
-    utterance: utteranceWithOverlap,
+    utterance: utteranceWithInlines,
     visualization: visualizationNode,
     comment: commentNode,
     overlap_bracket: overlapBracketNode,
+    anchor: anchorNode,
     image: imageNode,
     inline_ann: inlineAnnNode,
   },

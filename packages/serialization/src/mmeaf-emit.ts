@@ -148,6 +148,15 @@ export function emitMMEAF(
             '@_kind':       attrStr(ia['kind'], 'start'),
             '@_char_offset': String(charOffset),
           })
+        } else if (inline.type === 'anchor') {
+          const ia = inline.attrs ?? {}
+          inlineMarkElems.push({
+            '@_type':        'anchor',
+            '@_id':          attrStr(ia['id']),
+            '@_delimiter':   attrStr(ia['delimiter']),
+            '@_kind':        attrStr(ia['kind'], 'start'),
+            '@_char_offset': String(charOffset),
+          })
         } else if (inline.type === 'inline_ann') {
           const ia = inline.attrs ?? {}
           const markObj: Record<string, unknown> = {
@@ -169,8 +178,12 @@ export function emitMMEAF(
       if (startMs !== undefined) blockObj['@_start_ms'] = startMs
       if (endMs   !== undefined) blockObj['@_end_ms']   = endMs
       if (annRef)                blockObj['@_annotation_ref'] = annRef
-      const uttTier = (a['tier'] as string | undefined) ?? ''
-      if (uttTier) blockObj['@_tier'] = uttTier
+      const uttTier   = (a['tier']   as string | undefined) ?? ''
+      const uttTierId = (a['tierId'] as string | undefined) ?? null
+      if (uttTier)   blockObj['@_tier']    = uttTier
+      if (uttTierId) blockObj['@_tier_id'] = uttTierId
+      const contOfId = (a['continuationOfId'] as string | undefined) ?? null
+      if (contOfId)  blockObj['@_continuation_of'] = contOfId
       if (tokenElems.length > 0)     blockObj['mm:t']           = tokenElems
       if (inlineMarkElems.length > 0) blockObj['mm:inline_mark'] = inlineMarkElems
 
@@ -195,6 +208,15 @@ export function emitMMEAF(
           inlineMarkElems.push({
             '@_type':        'overlap_bracket',
             '@_group_id':    attrStr(ia['id']),
+            '@_kind':        attrStr(ia['kind'], 'start'),
+            '@_char_offset': String(charOffset),
+          })
+        } else if (inline.type === 'anchor') {
+          const ia = inline.attrs ?? {}
+          inlineMarkElems.push({
+            '@_type':        'anchor',
+            '@_id':          attrStr(ia['id']),
+            '@_delimiter':   attrStr(ia['delimiter']),
             '@_kind':        attrStr(ia['kind'], 'start'),
             '@_char_offset': String(charOffset),
           })
@@ -283,6 +305,7 @@ export function emitMMEAF(
             '@_name':        slot.name,
             '@_anchor_kind': slot.anchorKind,
           }
+          if (slot.tierId)   slotObj['@_tier_id']   = slot.tierId
           if (slot.required) slotObj['@_required'] = 'true'
           if (slot.variadic) slotObj['@_variadic'] = 'true'
           if (slot.label)    slotObj['@_label']    = slot.label
@@ -719,7 +742,7 @@ export function emitMMEAF(
 
   // mm:tier_extensions
 
-  const tiersWithExt = store.allTiers().filter(t => t.trackRef)
+  const tiersWithExt = store.allTiers().filter(t => t.trackRef || t.isUttTier)
   if (tiersWithExt.length > 0) {
     mumoData['mm:tier_extensions'] = {
       'mm:tier_ext': tiersWithExt.map(tier => {
@@ -728,6 +751,7 @@ export function emitMMEAF(
           extObj['@_track_set_id'] = tier.trackRef.trackSetId
           extObj['@_track_id']     = tier.trackRef.trackId
         }
+        if (tier.isUttTier) extObj['@_is_utt_tier'] = 'true'
         return extObj
       }),
     }

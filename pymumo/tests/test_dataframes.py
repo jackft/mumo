@@ -7,7 +7,7 @@ except ImportError:
     HAS_PANDAS = False
 
 import pytest
-from mumo import frames_df, annotations_df
+from mumo import patterns_df, frames_df, annotations_df
 
 pytestmark = pytest.mark.skipif(not HAS_PANDAS, reason='pandas not installed')
 
@@ -20,7 +20,7 @@ def test_annotations_df_has_expected_columns(doc):
 
 def test_annotations_df_row_count_matches(doc):
     df = annotations_df(doc)
-    assert len(df) == len(doc.all_eaf_annotations())
+    assert len(df) == len(doc.eaf_annotations)
 
 
 def test_annotations_df_tier_filter(doc):
@@ -41,11 +41,11 @@ def test_annotations_df_aligned_have_times(doc):
     assert (aligned['start_time'] <= aligned['end_time']).all()
 
 
-def test_frames_df_single_schema_returns_dataframe(doc):
-    if not doc._mumo['frames']:
+def test_patterns_df_returns_dataframe(doc):
+    if not doc.patterns:
         return
-    result = frames_df(doc)
     import pandas as pd
+    result = patterns_df(doc)
     if isinstance(result, dict):
         for df in result.values():
             assert isinstance(df, pd.DataFrame)
@@ -53,40 +53,43 @@ def test_frames_df_single_schema_returns_dataframe(doc):
         assert isinstance(result, pd.DataFrame)
 
 
-def test_frames_df_has_frame_id_and_schema_columns(doc):
-    if not doc._mumo['frames']:
+def test_patterns_df_has_pattern_id_and_schema_columns(doc):
+    if not doc.patterns:
         return
-    result = frames_df(doc)
     import pandas as pd
+    result = patterns_df(doc)
     df = result if isinstance(result, pd.DataFrame) else next(iter(result.values()))
-    assert 'frame_id' in df.columns
-    assert 'schema'   in df.columns
+    assert 'pattern_id' in df.columns
+    assert 'schema'     in df.columns
 
 
-def test_frames_df_named_schema(doc):
+def test_patterns_df_named_schema(doc):
     import pandas as pd
-    schemas = doc._mumo['frame_schemas']
+    schemas = doc.pattern_schemas
     if not schemas:
         return
-    schema_name = next(iter(schemas.values()))['name']
-    df = frames_df(doc, schema=schema_name)
+    schema_name = schemas[0].name
+    df = patterns_df(doc, schema=schema_name)
     assert isinstance(df, pd.DataFrame)
     assert (df['schema'] == schema_name).all()
 
 
-def test_frames_df_slot_text_column_present(doc):
+def test_patterns_df_slot_column_present(doc):
     import pandas as pd
-    schemas = doc._mumo['frame_schemas']
+    schemas = doc.pattern_schemas
     if not schemas:
         return
-    schema = next(iter(schemas.values()))
-    if not schema['slots']:
+    schema = schemas[0]
+    if not schema.slots:
         return
-    df = frames_df(doc, schema=schema['name'])
-    slot_name = schema['slots'][0]['name']
-    assert slot_name in df.columns
+    df = patterns_df(doc, schema=schema.name)
+    assert schema.slots[0].name in df.columns
 
 
-def test_frames_df_unknown_schema_raises(doc):
+def test_patterns_df_unknown_schema_raises(doc):
     with pytest.raises(KeyError):
-        frames_df(doc, schema='__no_such_schema__')
+        patterns_df(doc, schema='__no_such_schema__')
+
+
+def test_frames_df_is_alias_for_patterns_df(doc):
+    assert frames_df is patterns_df

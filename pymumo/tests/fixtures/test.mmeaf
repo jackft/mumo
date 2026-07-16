@@ -598,13 +598,13 @@
     </mm:transcript_structure>
     <mm:pattern_schemas>
       <mm:pattern_schema id="builtin:repair" name="Repair" description="Other-initiated self-repair (Schegloff et al. 1977)">
-        <mm:slot id="trouble" name="trouble" anchor_kind="span" required="true" label="Trouble source">
+        <mm:slot id="trouble" name="trouble" anchor_kind="textlet" required="true" label="Trouble source">
           <mm:metric id="trouble-type" name="Trouble type" type="categorical" vocabulary_id="builtin:vocab:trouble-type"></mm:metric>
         </mm:slot>
-        <mm:slot id="initiation" name="initiation" anchor_kind="span" required="true" label="Repair initiation">
+        <mm:slot id="initiation" name="initiation" anchor_kind="textlet" required="true" label="Repair initiation">
           <mm:metric id="initiation-type" name="Initiation type" type="categorical" vocabulary_id="builtin:vocab:initiation-type"></mm:metric>
         </mm:slot>
-        <mm:slot id="solution" name="solution" anchor_kind="span" label="Repair proper">
+        <mm:slot id="solution" name="solution" anchor_kind="textlet" label="Repair proper">
           <mm:metric id="is-solved" name="Resolved?" type="boolean"></mm:metric>
           <mm:metric id="solution-type" name="Solution type" type="categorical" vocabulary_id="builtin:vocab:solution-type"></mm:metric>
         </mm:slot>
@@ -633,23 +633,23 @@
       <mm:mark id="1783311612971-5f3f130b606i" block_id="1783311184358-2o3z3w2j6j5t" start="0" end="8"></mm:mark>
     </mm:marks>
     <mm:textlets>
-      <mm:textlet id="1783311612992-61154q19265p" mark_id="1783311612971-5f3f130b606i" type="">
+      <mm:textlet id="1783311612992-61154q19265p" mark_id="1783311612971-5f3f130b606i" type="textlet">
         <mm:codes>
           <mm:code>thanks</mm:code>
         </mm:codes>
       </mm:textlet>
     </mm:textlets>
     <mm:annotations>
-      <mm:annotation id="1783311415414-1q4r452w1m2e" type="">
+      <mm:annotation id="1783311415414-1q4r452w1m2e" type="utterance">
         <mm:feature name="utteranceId">1783311184358-5x52273d033c</mm:feature>
       </mm:annotation>
-      <mm:annotation id="1783311419071-072o3o1a6y3c" type="">
+      <mm:annotation id="1783311419071-072o3o1a6y3c" type="utterance">
         <mm:feature name="utteranceId">1783311184358-2o3z3w2j6j5t</mm:feature>
       </mm:annotation>
-      <mm:annotation id="1783311564320-3u0b3h0v4p37" type="">
+      <mm:annotation id="1783311564320-3u0b3h0v4p37" type="utterance">
         <mm:feature name="utteranceId">1783311184358-2d265u2p0c4l</mm:feature>
       </mm:annotation>
-      <mm:annotation id="1783311568637-5e1t5g1c0i65" type="">
+      <mm:annotation id="1783311568637-5e1t5g1c0i65" type="utterance">
         <mm:feature name="utteranceId">1783311184358-350d4b5l6i63</mm:feature>
       </mm:annotation>
     </mm:annotations>

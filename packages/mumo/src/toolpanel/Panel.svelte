@@ -56,7 +56,7 @@
     tlSelection?: { start: number; end: number } | null
     myAuthorId?: string
     onSelectPattern?: (id: ID | null) => void
-    onRequestSlotFill: (patternId: ID, slotSchemaId: ID, anchorKind: 'span' | 'utterance' | 'pattern' | 'any') => void
+    onRequestSlotFill: (patternId: ID, slotSchemaId: ID, anchorKind: 'textlet' | 'utterance' | 'tier' | 'pattern' | 'any', tierId?: ID) => void
     onCancelSlotFill: () => void
     onFillWithPattern?: (patternId: ID) => void
     onDeleteTextlet: (annId: string, markId: string) => void

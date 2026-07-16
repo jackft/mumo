@@ -146,9 +146,13 @@ export function docFromBlocks(blocks: Array<{ type?: string } & UttSpec>): Node 
   return docFromUtterances(blocks)
 }
 
-function _ensureUttTier(store: AnnotationStore) {
-  return store.allTiers().find(t => t.isUttTier)
-    ?? store.addTier('utterance', { isUttTier: true })
+function _ensureUttTier(store: AnnotationStore, participant: string, tierId?: string | null) {
+  if (tierId) {
+    const tier = store.getTier(tierId)
+    if (tier?.isUttTier) return tier
+  }
+  return store.allTiers().find(t => t.isUttTier && t.participant === participant)
+    ?? store.addTier(participant, { isUttTier: true, participant })
 }
 
 /**
@@ -211,7 +215,7 @@ export function createUttSyncPlugin(store: AnnotationStore, yjsSyncKey?: PluginK
 
           const existing = store.getAnnotation(id)
           if (!existing) {
-            const tier = _ensureUttTier(store)
+            const tier = _ensureUttTier(store, node.attrs.participant as string, node.attrs.tierId as string | null)
             store.addAnnotation('', anchors, { tierId: tier.id }, id)
           } else {
             const oldNode = oldUtts.get(id)
