@@ -144,7 +144,10 @@ export function parseXML(xml: string): EAFDocument {
   })
 
   const media = ((hdrEl['MEDIA_DESCRIPTOR'] ?? []) as Record<string, unknown>[]).map(el => {
-    const mimeType      = ga(el, 'MIME_TYPE')
+    // ELAN writes MIME_TYPE="unknown" when it can't resolve one — treat as absent
+    // so consumers fall back to extension-based detection.
+    const mimeTypeRaw   = ga(el, 'MIME_TYPE')
+    const mimeType      = mimeTypeRaw === 'unknown' ? undefined : mimeTypeRaw
     const relativeUrl   = ga(el, 'RELATIVE_MEDIA_URL')
     const timeOriginStr = ga(el, 'TIME_ORIGIN')
     const timeOrigin    = timeOriginStr !== undefined ? parseInt(timeOriginStr, 10) : undefined

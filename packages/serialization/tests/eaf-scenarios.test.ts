@@ -283,4 +283,13 @@ describe('media descriptor', () => {
     })
     expect(xml).not.toContain('TIME_ORIGIN')
   })
+
+  it('parses MIME_TYPE="unknown" as absent (ELAN sentinel for unresolvable)', () => {
+    const xml = emitEAF(emptyDoc(), new AnnotationStore(), {
+      mediaUrl: 'file:///video.mp4',
+    })
+    expect(xml).toContain('MIME_TYPE="unknown"')
+    const result = parseEAF(xml)
+    expect(result.media[0]!.mimeType).toBeUndefined()
+  })
 })

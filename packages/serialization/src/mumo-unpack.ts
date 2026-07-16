@@ -15,8 +15,31 @@ export interface MumoUnpackResult {
   cvFiles: Map<string, Uint8Array>
 }
 
+/**
+ * Hand-rolled archives (e.g. compressing a folder in a file manager) nest every
+ * entry under the folder name. Strip the shared directory prefix, repeating for
+ * doubly-nested archives, so manifest lookups work regardless of how the zip
+ * was created.
+ */
+function stripCommonDirPrefix(files: Record<string, Uint8Array>): Record<string, Uint8Array> {
+  while (!files['manifest.json']) {
+    const names = Object.keys(files).filter(n => !n.endsWith('/'))
+    if (names.length === 0) break
+    const slash = names[0]!.indexOf('/')
+    if (slash < 0) break
+    const prefix = names[0]!.slice(0, slash + 1)
+    if (!names.every(n => n.startsWith(prefix))) break
+    files = Object.fromEntries(
+      Object.entries(files)
+        .filter(([n]) => n.length > prefix.length && n.startsWith(prefix))
+        .map(([n, d]) => [n.slice(prefix.length), d]),
+    )
+  }
+  return files
+}
+
 export function unpackMumo(data: Uint8Array): MumoUnpackResult {
-  const files = unzipSync(data)
+  const files = stripCommonDirPrefix(unzipSync(data))
 
   const manifestRaw = files['manifest.json']
   if (!manifestRaw) throw new Error('.mumo: missing manifest.json')

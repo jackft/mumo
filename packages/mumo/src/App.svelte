@@ -4218,6 +4218,7 @@ function ctxEditUttTier() {
       const rel = relFor(t.path)
       return [{
         mediaUrl: t.path,
+        ...(t.file.type ? { mimeType: normalizeMimeType(t.file.type) } : {}),
         ...(rel ? { relativeMediaUrl: rel } : {}),
         ...(t.offsetSec ? { timeOrigin: Math.round(t.offsetSec * 1000) } : {}),
       }]
@@ -4225,6 +4226,7 @@ function ctxEditUttTier() {
     const primaryRel = primaryTrack?.path ? relFor(primaryTrack.path) : null
     const mmeaf = emitMMEAF(docJSON, store, {
       ...(primaryTrack?.path ? { mediaUrl: primaryTrack.path } : {}),
+      ...(primaryTrack?.file.type ? { mimeType: normalizeMimeType(primaryTrack.file.type) } : {}),
       ...(primaryRel ? { relativeMediaUrl: primaryRel } : {}),
       ...(primaryTrack?.offsetSec ? { timeOrigin: Math.round(primaryTrack.offsetSec * 1000) } : {}),
       ...(additionalMedia.length ? { additionalMedia } : {}),
