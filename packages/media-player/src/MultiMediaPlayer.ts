@@ -73,15 +73,23 @@ export class MultiMediaPlayer {
 
   // Loading
 
-  async loadPrimary(file: File, path: string | null): Promise<void> {
+  async loadPrimary(file: File, path: string | null, offsetSec?: number): Promise<void> {
     const isNew = this._players.length === 0
-    await this._ensurePrimary().load(file, path, this._settings)
+    const player = this._ensurePrimary()
+    // Pre-seed the track like addTrack does — load() carries offsetSec over.
+    // When omitted, an existing track's offset is preserved (file replacement).
+    if (offsetSec !== undefined) player.track = { file, path, mediaUrl: '', offsetSec }
+    await player.load(file, path, this._settings)
     if (isNew) this._notifyPlayersChange()
   }
 
-  async loadPrimaryUrl(url: string): Promise<void> {
+  async loadPrimaryUrl(url: string, offsetSec?: number): Promise<void> {
     const isNew = this._players.length === 0
-    await this._ensurePrimary().loadUrl(url, this._settings)
+    const player = this._ensurePrimary()
+    if (offsetSec !== undefined) {
+      player.track = { file: new File([], url.split('/').pop() ?? 'media'), path: null, mediaUrl: url, offsetSec }
+    }
+    await player.loadUrl(url, this._settings)
     if (isNew) this._notifyPlayersChange()
   }
 

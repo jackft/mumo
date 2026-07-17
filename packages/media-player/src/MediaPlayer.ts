@@ -172,7 +172,9 @@ export class MediaPlayer {
     const kind: 'audio' | 'video' = /\.(mp4|webm|mov|m4v|ogv|mkv)$/i.test(name) ? 'video' : 'audio'
 
     console.log(`[media] loading ${kind} url: ${name}`)
-    this.track = null
+    // addTrackUrl/loadPrimaryUrl pre-seed the track to carry offsetSec — keep it
+    // when it matches this URL; otherwise the URL has no backing track.
+    this.track = this.track?.mediaUrl === url ? this.track : null
     this._setState({ mediaUrl: url, kind, filename: name, duration: 0, sampleRate: 0, channelCount: 1, activeChannel: 'mix', muted: this.state?.muted ?? false, volume: this.state?.volume ?? 1 })
 
     this._broker.startStream(settings)

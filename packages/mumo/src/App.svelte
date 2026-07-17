@@ -12,7 +12,6 @@
   import type { CollabMode, CollabStatus, CollabIdentity, AwarenessLike, PeerPatternSel } from './collab.js'
   import { parseXML, eafTomumo, emitEAF, emitETF, parseETF, parseMMEAF, parseMMETF, emitMMEAF, emitMMETF, emitVTT, emitTXT, emitCSV, packMumo, unpackMumo, relativeMediaUrl } from '@mumo/serialization'
   import { MediaResolver } from './media-resolver.js'
-  import type { MediaResolveResult } from './media-resolver.js'
   import appIconUrl from './assets/mumo.svg'
   import magnetIconUrl from './assets/magnet.svg'
   import type { EAFDocument, EAFMediaDescriptor, MumoImageInput, MumoSpectrogramInput, MumoTrackBufferInput } from '@mumo/serialization'
@@ -1440,22 +1439,6 @@
     await multiPlayer.loadPrimary(file, path)
   }
 
-  async function _loadResolvedMedia(result: MediaResolveResult, timeOriginSec: number) {
-    if (result.kind === 'url') {
-      if (timeOriginSec !== 0) {
-        await multiPlayer.addTrackUrl(result.url, timeOriginSec)
-      } else {
-        await multiPlayer.loadPrimaryUrl(result.url)
-      }
-    } else {
-      if (timeOriginSec !== 0) {
-        await multiPlayer.addTrack(result.file, result.path, timeOriginSec)
-      } else {
-        await loadMediaFile(result.file, result.path)
-      }
-    }
-  }
-
   async function _openMediaPicker() {
     const result = await platform.openBinaryFile(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'], 'Media files')
     if (result) await loadMediaFile(result.file, result.path)
@@ -2319,57 +2302,36 @@ function ctxEditUttTier() {
       }
       _syncTrackOverlay()
     }
-    if (parsed.media.length > 0) {
-      const [primaryDesc, ...secondaryDescs] = parsed.media
-      const tryLoadDesc = async (desc: typeof parsed.media[number], primary: boolean) => {
-        try {
-          const result = await mediaResolver.resolve(desc, filePath, platform)
-          if (!result) {
-            failedMedia = [...failedMedia, {
-              mediaUrl: desc.mediaUrl,
-              name: desc.mediaUrl.replace(/\\/g, '/').split('/').pop() ?? desc.mediaUrl,
-              offsetSec: (desc.timeOrigin ?? 0) / 1000,
-            }]
-            return
-          }
-          if (primary) {
-            if (result.kind === 'url') await multiPlayer.loadPrimaryUrl(result.url)
-            else await loadMediaFile(result.file, result.path)
-          } else {
-            const offsetSec = (desc.timeOrigin ?? 0) / 1000
-            if (result.kind === 'url') await multiPlayer.addTrackUrl(result.url, offsetSec)
-            else await multiPlayer.addTrack(result.file, result.path, offsetSec)
-          }
-        } catch { /* media file may have moved */ }
-      }
-      const loads: Promise<void>[] = []
-      if (primaryDesc) loads.push(tryLoadDesc(primaryDesc, true))
-      for (const d of secondaryDescs) loads.push(tryLoadDesc(d, false))
-      await Promise.all(loads)
-    } else if (unpacked.manifest.mediaPaths?.length) {
-      // Backward compat: old .mumo files without MEDIA_DESCRIPTOR in MMEAF
-      const [primaryPath, ...extraPaths] = unpacked.manifest.mediaPaths
-      const tryLoad = async (mediaPath: string, primary: boolean) => {
-        try {
-          const desc: EAFMediaDescriptor = { mediaUrl: mediaPath, mimeType: guessMime(mediaPath.split(/[/\\]/).pop() ?? '') }
-          const result = await mediaResolver.resolve(desc, filePath, platform)
-          if (!result) {
-            const name = mediaPath.replace(/\\/g, '/').split('/').pop() ?? mediaPath
-            failedMedia = [...failedMedia, { mediaUrl: mediaPath, name, offsetSec: 0 }]
-            return
-          }
-          if (primary) {
-            if (result.kind === 'url') await multiPlayer.loadPrimaryUrl(result.url)
-            else await loadMediaFile(result.file, result.path)
-          } else {
-            if (result.kind === 'url') await multiPlayer.addTrackUrl(result.url)
-            else await multiPlayer.addTrack(result.file, result.path)
-          }
-        } catch { /* media file may have moved */ }
-      }
-      const loads: Promise<void>[] = []
-      if (primaryPath) loads.push(tryLoad(primaryPath, true))
-      for (const p of extraPaths) loads.push(tryLoad(p, false))
+    // Media descriptors from the MMEAF, or synthesized from the manifest's
+    // mediaPaths for old .mumo files saved before MEDIA_DESCRIPTOR was embedded.
+    const mediaDescs: EAFMediaDescriptor[] = parsed.media.length > 0
+      ? parsed.media
+      : (unpacked.manifest.mediaPaths ?? []).map(p => ({ mediaUrl: p, mimeType: guessMime(p.split(/[/\\]/).pop() ?? '') }))
+    if (mediaDescs.length > 0) {
+      // Resolve everything first (may prompt for moved files), then start the
+      // loads with the primary first so it deterministically claims players[0].
+      // Racing resolve+load let a secondary land at players[0] and be clobbered
+      // by the primary's load, taking its offset with it.
+      const resolved = await Promise.all(mediaDescs.map(async desc => {
+        try { return await mediaResolver.resolve(desc, filePath, platform) } catch { return null }
+      }))
+      const loads: Promise<unknown>[] = []
+      mediaDescs.forEach((desc, i) => {
+        const result = resolved[i]
+        const offsetSec = (desc.timeOrigin ?? 0) / 1000
+        if (!result) {
+          failedMedia = [...failedMedia, {
+            mediaUrl: desc.mediaUrl,
+            name: desc.mediaUrl.replace(/\\/g, '/').split('/').pop() ?? desc.mediaUrl,
+            offsetSec,
+          }]
+          return
+        }
+        const load = i === 0
+          ? (result.kind === 'url' ? multiPlayer.loadPrimaryUrl(result.url, offsetSec) : multiPlayer.loadPrimary(result.file, result.path, offsetSec))
+          : (result.kind === 'url' ? multiPlayer.addTrackUrl(result.url, offsetSec) : multiPlayer.addTrack(result.file, result.path, offsetSec))
+        loads.push(load.catch(() => { /* media file may have moved */ }))
+      })
       await Promise.all(loads)
     }
     if (failedMedia.length > 0) linkedMediaOpen = true
