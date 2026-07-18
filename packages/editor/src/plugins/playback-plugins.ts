@@ -104,6 +104,18 @@ export function buildContinuationHeadPlugin(): Plugin {
   })
 }
 
+function _makeHeadMarkEl(): HTMLSpanElement {
+  const span = document.createElement('span')
+  span.className = 'utt-head-mark'
+  // U+2060 word-joiner as first text character: the line-breaking algorithm
+  // processes it as real inline text in both Chrome and Firefox, so it
+  // suppresses the break between any preceding trailing space and this glyph.
+  // (A CSS ::after pseudo-element is a separate formatting object in Firefox
+  // and the WJ cannot cross that boundary.)
+  span.textContent = '⁠⤦'
+  return span
+}
+
 function _buildContinuationHeadDecos(doc: Parameters<typeof DecorationSet.create>[0]): DecorationSet {
   // Collect continuations per head, in doc order (forEach is doc order)
   const contsByHead = new Map<string, Array<{ id: string; offset: number; size: number }>>()
@@ -128,11 +140,15 @@ function _buildContinuationHeadDecos(doc: Parameters<typeof DecorationSet.create
   for (const [headId, conts] of contsByHead) {
     // Head block always gets the marker
     const head = headOffsets.get(headId)
-    if (head) decos.push(Decoration.node(head.offset, head.offset + head.size, { 'data-has-continuation': 'true' }))
+    if (head) {
+      decos.push(Decoration.node(head.offset, head.offset + head.size, { 'data-has-continuation': 'true' }))
+      decos.push(Decoration.widget(head.offset + head.size - 1, _makeHeadMarkEl, { side: 1, key: 'head-mark' }))
+    }
     // All continuations except the last also get the marker
     for (let i = 0; i < conts.length - 1; i++) {
       const c = conts[i]!
       decos.push(Decoration.node(c.offset, c.offset + c.size, { 'data-has-continuation': 'true' }))
+      decos.push(Decoration.widget(c.offset + c.size - 1, _makeHeadMarkEl, { side: 1, key: 'head-mark' }))
     }
   }
 

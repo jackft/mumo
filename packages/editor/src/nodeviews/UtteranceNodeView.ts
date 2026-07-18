@@ -166,7 +166,7 @@ export class UtteranceNodeView implements NodeView {
   private _refreshSepEl(continuationOfId: string | null): void {
     if (continuationOfId) {
       this._sepEl.className = 'utt-participant-sep utt-continuation-mark'
-      this._sepEl.textContent = '↪'
+      this._sepEl.textContent = '⤤'
     } else {
       this._sepEl.className = 'utt-participant-sep'
       this._sepEl.textContent = ':'
