@@ -1213,18 +1213,14 @@
     pointer-events: none;
   }
 
-  :global(.utt-row[data-has-continuation] .utt-content::after) {
-    content: '\2060↩';
-    display: inline-block;
+  :global(.utt-head-mark) {
     color: var(--color-text-muted, #bbb);
-    margin-left: 0.35em;
+    margin-left: 0.2em;
     user-select: none;
     pointer-events: none;
-    vertical-align: baseline;
   }
 
   :global(.utt-continuation-mark) {
-    transform: scaleY(-1);
     color: var(--color-text-muted, #bbb);
     font-weight: 400;
     cursor: default;
