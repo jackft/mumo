@@ -178,15 +178,15 @@ importers:
       '@mumo/timeline':
         specifier: workspace:*
         version: link:../timeline
-      '@ricky0123/vad-web':
-        specifier: ^0.0.30
-        version: 0.0.30
       audio-analysis-wasm:
         specifier: workspace:*
         version: link:../audio-analysis-wasm
       mediabunny:
         specifier: ^1.50.3
         version: 1.50.6
+      onnxruntime-web:
+        specifier: ^1.27.0
+        version: 1.27.0
       pixi.js:
         specifier: ^8.19.0
         version: 8.19.0
@@ -1244,9 +1244,6 @@ packages:
 
   '@protobufjs/utf8@1.1.1':
     resolution: {integrity: sha512-oOAWABowe8EAbMyWKM0tYDKi8Yaox52D+HWZhAIJqQXbqe0xI/GV7FhLWqlEKreMkfDjshR5FKgi3mnle0h6Eg==}
-
-  '@ricky0123/vad-web@0.0.30':
-    resolution: {integrity: sha512-cJyYrh4YeeUBJcbR9Bic/bFDyB9qBkAepvpuWM3vLxnAi7bC3VHzf51UeNdT+OtY4D7MLAgV8iJMc4z41ZnaWg==}
 
   '@rolldown/binding-android-arm64@1.1.4':
     resolution: {integrity: sha512-EZLpf/8y7GXkkra90ML47kzik/GMP3EMcE9bPyHmRfxLC6z9+aW5A8poCsoxjrT5GfEcNAAvWwUHjvP1pUQkfw==}
@@ -4847,10 +4844,6 @@ snapshots:
   '@protobufjs/pool@1.1.0': {}
 
   '@protobufjs/utf8@1.1.1': {}
-
-  '@ricky0123/vad-web@0.0.30':
-    dependencies:
-      onnxruntime-web: 1.27.0
 
   '@rolldown/binding-android-arm64@1.1.4':
     optional: true

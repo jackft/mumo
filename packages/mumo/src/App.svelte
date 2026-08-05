@@ -66,8 +66,8 @@
   import EditTierDlg from './dialogs/EditTierDlg.svelte'
   import UttTiersDlg from './dialogs/UttTiersDlg.svelte'
   import type { SlotFillMode } from './patternTypes.js'
-  import type { MediaState, SpectrogramSettings, VadSegment, WaveformBins } from '@mumo/media-player'
-  import { SPEC_PRESETS, DEFAULT_SPEC_SETTINGS, MultiMediaPlayer, VideoTileLayout, LinkedMediaDlg, computeEnergyVad } from '@mumo/media-player'
+  import type { MediaState, SpectrogramSettings, VadSegment, VadSettings, PitchSettings, WaveformBins } from '@mumo/media-player'
+  import { SPEC_PRESETS, DEFAULT_SPEC_SETTINGS, DEFAULT_VAD_SETTINGS, DEFAULT_PITCH_SETTINGS, MultiMediaPlayer, VideoTileLayout, LinkedMediaDlg, computeEnergyVad, smoothOctaves } from '@mumo/media-player'
   import type { MediaPlayer } from '@mumo/media-player'
   import type { SignalChannel, TickMark, TierIntervalOverlay, ArcItem, MotionCurve } from '@mumo/timeline'
   import './css/base.css'
@@ -658,6 +658,95 @@
   let mediaSignals    = $state<SignalChannel[]>([])
   let hiddenSignalIds = $state<Set<string>>(new Set())
 
+  // Pitch is drawn over the waveform (not its own lane) and is off by default, toggled from the
+  // timeline gear menu. Contours are held here keyed by waveform-signal id and attached to the
+  // matching spectrogram channel while that channel's id is in `pitchChannels`.
+  const pitchChannels = new SvelteSet<string>()  // spectrogram-signal ids with the pitch overlay on
+  let pitchComputing = $state(false)     // a pitch pass is running (drives the progress bar)
+  let pitchComputed  = $state(false)     // pitch has been computed for the current primary file
+  let pitchProgress = $state<{ done: number; total: number } | null>(null)
+  let _lastPitchFile: string | undefined // primary filename analyzer state is scoped to
+  let pitchSettings = $state<PitchSettings>({ ...DEFAULT_PITCH_SETTINGS })
+  // VAD (Silero) runs as a deferred pass after the spectrogram/waveform appear; enable-able.
+  let vadEnabled   = $state(true)
+  let vadComputed  = $state(false)
+  let vadComputing = $state(false)
+  let vadProgress = $state<{ done: number; total: number } | null>(null)
+  // Raw per-channel pitch tracks keyed by waveform-signal id (kept so the confidence gate can be
+  // re-applied instantly without re-detecting).
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- imperative cache; reactivity flows through mediaSignals via _syncPitchOverlay
+  const pitchTracks = new Map<string, { times: Float32Array; f0: Float32Array; confidence: Float32Array }>()
+
+  function _buildPitchOverlay(track: { times: Float32Array; f0: Float32Array; confidence: Float32Array }): { samples: Array<[number, number]>; yMin: number; yMax: number } | null {
+    const { times, confidence } = track
+    const thr = pitchSettings.confidenceThreshold
+    const loHz = pitchSettings.minHz, hiHz = pitchSettings.maxHz
+    // Octave-jump correction (post-processing) then linear frequency. Filter by confidence AND the
+    // display frequency range; out-of-range / low-confidence frames become NaN gaps.
+    const f0 = smoothOctaves(track.f0)
+    const samples: Array<[number, number]> = new Array(f0.length)
+    const vals: number[] = []
+    for (let f = 0; f < f0.length; f++) {
+      const hz = f0[f]!
+      const voiced = hz >= loHz && hz <= hiHz && confidence[f]! >= thr
+      if (voiced) { samples[f] = [times[f]!, hz]; vals.push(hz) }
+      else samples[f] = [times[f]!, NaN]
+    }
+    if (vals.length === 0) return null  // nothing voiced/in-range
+    // Scale to the robust bulk of the pitch (2nd–98th percentile) so residual octave errors don't
+    // compress the range. Floor the span so near-constant pitch isn't magnified into noise.
+    vals.sort((a, b) => a - b)
+    const pct = (q: number) => vals[Math.min(vals.length - 1, Math.floor(q * (vals.length - 1)))]!
+    let yMin = pct(0.02), yMax = pct(0.98)
+    const MIN_SPAN = 30  // Hz
+    if (yMax - yMin < MIN_SPAN) { const mid = (yMin + yMax) / 2; yMin = mid - MIN_SPAN / 2; yMax = mid + MIN_SPAN / 2 }
+    const pad = (yMax - yMin) * 0.1
+    return { samples, yMin: Math.max(0, yMin - pad), yMax: yMax + pad }
+  }
+
+  function _syncPitchOverlay() {
+    mediaSignals = mediaSignals.map(s => {
+      if (s.kind !== 'waveform') return s
+      const track = pitchChannels.has(s.id) ? pitchTracks.get(s.id) : undefined
+      const overlay = track ? _buildPitchOverlay(track) : null
+      if (overlay) return { ...s, pitch: overlay }
+      if (!s.pitch) return s
+      const rest = { ...s }
+      delete rest.pitch  // omit (not undefined) — exactOptionalPropertyTypes
+      return rest
+    })
+    _flushSignals()
+  }
+
+  // Pitch is computed lazily: only when the overlay is on and it isn't already computed/running,
+  // and only once the audio has been analyzed (waveform present). Kicks off a pitch-only re-decode.
+  function _maybeComputePitch() {
+    if (pitchChannels.size === 0 || pitchComputed || pitchComputing) return
+    if (!mediaSignals.some(s => s.kind === 'waveform')) return
+    pitchComputing = true
+    pitchProgress = { done: 0, total: 0 }
+    multiPlayer.computePitch()
+  }
+
+  // VAD runs as a deferred pass once audio is analyzed — only if enabled and not already done/running.
+  function _maybeComputeVad() {
+    if (!vadEnabled || vadComputed || vadComputing) return
+    if (!mediaSignals.some(s => s.kind === 'waveform')) return
+    vadComputing = true
+    vadProgress = { done: 0, total: 0 }
+    multiPlayer.computeVad()
+  }
+
+  // Reset analyzer state when the primary file changes (drop stale tracks; recompute lazily).
+  function _resetPitchForFile(filename: string | undefined) {
+    if (filename === _lastPitchFile) return
+    _lastPitchFile = filename
+    const pid = multiPlayer.primary?.id
+    for (const k of [...pitchTracks.keys()]) if (!pid || k.startsWith(pid + ':')) pitchTracks.delete(k)
+    pitchComputed = false; pitchComputing = false; pitchProgress = null
+    vadComputed = false; vadComputing = false; vadProgress = null
+  }
+
   function _afterStoreChange() {
     _recomputeWarnings()
     if (!_timelinePushPending) {
@@ -1244,6 +1333,7 @@
   let primaryFrameRate     = $state(30)
   // mediaSignals / hiddenSignalIds are declared above _afterStoreChange (TDZ).
   let spectrogramSettings = $state<SpectrogramSettings>({ ...DEFAULT_SPEC_SETTINGS })
+  let vadSettings = $state<VadSettings>({ ...DEFAULT_VAD_SETTINGS })
   let spectrogramProgress = $state<{ done: number; total: number } | null>(null)
   let specModalOpen = $state(false)
   let hiddenLaneIds    = $state<Set<string>>(new Set())
@@ -1322,7 +1412,11 @@
   }
 
   function _flushSignals() {
-    timelineRef?.setSignals(mediaSignals.filter(s => !hiddenSignalIds.has(s.id)))
+    // A hidden waveform whose pitch is on is still shown — but bars suppressed (pitch only).
+    const out = mediaSignals
+      .filter(s => !hiddenSignalIds.has(s.id) || (s.kind === 'waveform' && pitchChannels.has(s.id)))
+      .map(s => (s.kind === 'waveform' && hiddenSignalIds.has(s.id) && pitchChannels.has(s.id)) ? { ...s, pitchOnly: true } : s)
+    timelineRef?.setSignals(out)
   }
 
   const customSignalHandlers = new Map<string, (data: unknown) => void>()
@@ -1333,6 +1427,7 @@
         // Clear only the primary player's signals; secondary signals survive primary reload
         const pid = multiPlayer.primary?.id
         if (pid) mediaSignals = mediaSignals.filter(s => !s.id.startsWith(pid + ':'))
+        _resetPitchForFile(state?.filename)  // drop stale pitch on file change (recomputes lazily)
         mediaState = state
         if (state) {
           timelineRef?.setMediaDuration(state.duration)
@@ -1371,6 +1466,10 @@
           { id, label, kind: 'waveform' as const, waveformBins: bins, height: 20, timeOffset },
         ].sort(sortSignals)
         _flushSignals()
+        // Audio analyzed → run the deferred analyzers (VAD if enabled, pitch for any enabled channel).
+        _maybeComputeVad()
+        _maybeComputePitch()
+        _syncPitchOverlay()
       },
       onSpectrogramOverview(playerId, ch, tile) {
         const player = multiPlayer.players.find(p => p.id === playerId)
@@ -1380,13 +1479,18 @@
         const label = isPrimary ? `spec ${chLabel}` : `${player?.state?.filename ?? ''} spec ${chLabel}`
         const id = `${playerId}:spectrogram:ch${ch}`
         const timeOffset = player?.track?.offsetSec ?? 0
+        // maxFreqHz = the tile's true stored ceiling (analysis stores headroom above the view); the
+        // displayed window is [viewMinHz, maxFreqHz(view)] cropped at render.
+        const storedCeiling = tile.maxFreqHz ?? spectrogramSettings.maxFreqHz
+        // Live frequency crop only applies to linear scale (mel rows are non-uniform in Hz).
+        const viewMinHz = spectrogramSettings.scale === 'mel' ? 0 : spectrogramSettings.viewMinHz
         if (!mediaSignals.find(s => s.id === id)) {
           mediaSignals = [
             ...mediaSignals,
-            { id, label, kind: 'spectrogram' as const, imageTimeStart: tile.timeStart, imageTimeEnd: tile.timeEnd, height: 40, maxFreqHz: spectrogramSettings.maxFreqHz, spectrogramDynamicRangeDb: spectrogramSettings.dynamicRangeDb, spectrogramGamma: spectrogramSettings.gamma, timeOffset },
+            { id, label, kind: 'spectrogram' as const, imageTimeStart: tile.timeStart, imageTimeEnd: tile.timeEnd, height: 40, maxFreqHz: storedCeiling, viewMinHz, viewMaxHz: spectrogramSettings.maxFreqHz, spectrogramDynamicRangeDb: spectrogramSettings.dynamicRangeDb, spectrogramGamma: spectrogramSettings.gamma, timeOffset },
           ].sort(sortSignals)
         } else {
-          mediaSignals = mediaSignals.map(s => s.id === id ? { ...s, label, maxFreqHz: spectrogramSettings.maxFreqHz, spectrogramDynamicRangeDb: spectrogramSettings.dynamicRangeDb, spectrogramGamma: spectrogramSettings.gamma } : s)
+          mediaSignals = mediaSignals.map(s => s.id === id ? { ...s, label, maxFreqHz: storedCeiling, viewMinHz, viewMaxHz: spectrogramSettings.maxFreqHz, spectrogramDynamicRangeDb: spectrogramSettings.dynamicRangeDb, spectrogramGamma: spectrogramSettings.gamma } : s)
         }
         _flushSignals()
         timelineRef?.setSpectrogramOverview(id, tile)
@@ -1404,7 +1508,25 @@
         )
         _flushSignals()
       },
-      onVad(segments) { timelineRef?.setVadSegments(segments); mergedVadSegments = segments },
+      onVad(segments) { timelineRef?.setVadSegments(segments); mergedVadSegments = segments; vadComputed = true; vadComputing = false; vadProgress = null },
+      onVadProgress(done, total) {
+        // Final progress clears the running flag even if VAD is disabled (model/WASM unavailable).
+        if (done >= total && total > 0) { vadProgress = null; vadComputing = false }
+        else vadProgress = { done, total }
+      },
+      onPitch(playerId, ch, track) {
+        // Pitch overlays the matching waveform channel. Keep the raw track; the confidence gate is
+        // applied when building the overlay (see _buildPitchOverlay).
+        pitchTracks.set(`${playerId}:waveform:ch${ch}`, { times: track.times, f0: track.f0, confidence: track.confidence })
+        pitchComputed = true; pitchComputing = false; pitchProgress = null
+        _syncPitchOverlay()
+      },
+      onPitchProgress(done, total) {
+        // The final progress (done≥total) marks the pass complete — clear the running flag even if
+        // no track arrives (pitch disabled: WASM/model unavailable), so it isn't stuck.
+        if (done >= total && total > 0) { pitchProgress = null; pitchComputing = false }
+        else pitchProgress = { done, total }
+      },
       onProgress(done, total) {
         spectrogramProgress = (done >= total && total > 0) ? null : { done, total }
       },
@@ -1422,17 +1544,60 @@
   if (!untrack(() => mediaPreservePitch)) multiPlayer.setPreservePitch(false)
 
   function applySpectrogramSettings(newSettings: SpectrogramSettings): void {
-    const monoChanged = newSettings.monoMix !== spectrogramSettings.monoMix
+    const old = spectrogramSettings
+    // The stored ceiling from the last analysis (headroom above the displayed max). If the requested
+    // view max still fits under it, the frequency window is a pure display crop — no re-decode.
+    const storedCeiling = Math.max(
+      old.maxFreqHz,
+      ...mediaSignals.filter(s => s.kind === 'spectrogram').map(s => s.maxFreqHz ?? 0),
+    )
+    // Fields that require re-analysis (everything except display-only knobs).
+    const analysisChanged =
+      newSettings.windowLengthSec !== old.windowLengthSec ||
+      newSettings.hopSec !== old.hopSec ||
+      newSettings.window !== old.window ||
+      newSettings.scale !== old.scale ||
+      newSettings.melBands !== old.melBands ||
+      newSettings.monoMix !== old.monoMix ||
+      newSettings.preEmphasisDbPerOct !== old.preEmphasisDbPerOct ||
+      newSettings.maxFreqHz > storedCeiling + 1   // view max exceeds what we stored → must recompute
+
+    const monoChanged = newSettings.monoMix !== old.monoMix
     spectrogramSettings = newSettings
     mediaSignals = mediaSignals
       .filter(s => !monoChanged || !newSettings.monoMix || !s.id.match(/:(waveform|spectrogram):ch[1-9]/))
-      .map(s => s.kind === 'spectrogram' ? { ...s, spectrogramDynamicRangeDb: newSettings.dynamicRangeDb, spectrogramGamma: newSettings.gamma } : s)
+      .map(s => s.kind === 'spectrogram'
+        ? { ...s, spectrogramDynamicRangeDb: newSettings.dynamicRangeDb, spectrogramGamma: newSettings.gamma, viewMinHz: newSettings.scale === 'mel' ? 0 : newSettings.viewMinHz, viewMaxHz: newSettings.maxFreqHz }
+        : s)
+    _flushSignals()
     if (!mediaState) return
+    if (!analysisChanged) return   // display-only (dyn range / gamma / frequency window) — instant, no re-decode
     for (const sig of mediaSignals) {
       if (sig.kind === 'spectrogram') timelineRef?.clearSpectrogramDetailTiles(sig.id)
     }
     spectrogramProgress = { done: 0, total: 0 }
     multiPlayer.setSpectrogramSettings(newSettings)
+  }
+
+  function applyVadSettings(newSettings: VadSettings): void {
+    vadSettings = newSettings
+    multiPlayer.setVadSettings(newSettings)  // re-segments cached probs instantly (no re-decode)
+  }
+
+  // Backend + YIN CMNDF threshold re-run pitch (a re-decode). The display filters (confidence gate
+  // and frequency range) are render-only and re-apply instantly.
+  function applyPitchDetect(partial: Partial<PitchSettings>): void {
+    pitchSettings = { ...pitchSettings, ...partial }
+    multiPlayer.setPitchSettings(pitchSettings)  // remember for the next compute
+    if (pitchChannels.size > 0 || pitchComputed) {  // recompute only if pitch is actually in use
+      pitchComputed = false; pitchComputing = true; pitchProgress = { done: 0, total: 0 }
+      multiPlayer.computePitch()
+    }
+  }
+  function applyPitchFilter(partial: Partial<PitchSettings>): void {
+    pitchSettings = { ...pitchSettings, ...partial }
+    multiPlayer.setPitchSettings(pitchSettings)  // keep players in sync (no recompute)
+    _syncPitchOverlay()
   }
 
   async function loadMediaFile(file: File, path: string | null = null) {
@@ -4919,6 +5084,7 @@ function ctxEditUttTier() {
             </div>
           </div>
           {/if}
+          <button onclick={() => { openMenu = null; linkedMediaOpen = true }}>Link media…</button>
           <button onclick={() => { openMenu = null; void (filecontroller.currentFilePath ? saveMumo() : saveMumoAs()) }}>Save{filecontroller.currentFilename ? ` (${filecontroller.currentFilename})` : ''}</button>
           <div class="mb-sub-wrap">
             <button onclick={() => { openMenu = null; void saveMumoAs() }}>Save As… <span class="mb-arrow">▶</span></button>
@@ -4957,8 +5123,6 @@ function ctxEditUttTier() {
           <button onclick={() => { openMenu = null; void applyTemplate() }}>Apply template…</button>
           <hr class="mb-sep" />
           <button onclick={() => { openMenu = null; setLanguage() }}>Language: {documentLanguage}</button>
-          <hr class="mb-sep" />
-          <button onclick={() => { openMenu = null; linkedMediaOpen = true }}>Manage media…</button>
           <hr class="mb-sep" />
           {#if _showFileOpen}
           <div class="mb-sub-wrap">
@@ -5636,6 +5800,34 @@ function ctxEditUttTier() {
         {#if pct !== null}<span class="status-spec-pct">{pct}%</span>{/if}
       </span>
     {/if}
+    {#if pitchProgress !== null}
+      {@const ppct = pitchProgress.total > 0 ? Math.round(pitchProgress.done / pitchProgress.total * 100) : null}
+      <span class="status-spec">
+        <span class="status-spec-label">Computing pitch…</span>
+        <span class="status-spec-track">
+          {#if ppct !== null}
+            <span class="status-spec-fill" style="width:{ppct}%"></span>
+          {:else}
+            <span class="status-spec-indeterminate"></span>
+          {/if}
+        </span>
+        {#if ppct !== null}<span class="status-spec-pct">{ppct}%</span>{/if}
+      </span>
+    {/if}
+    {#if vadProgress !== null}
+      {@const vpct = vadProgress.total > 0 ? Math.round(vadProgress.done / vadProgress.total * 100) : null}
+      <span class="status-spec">
+        <span class="status-spec-label">Voice activity detection (VAD)…</span>
+        <span class="status-spec-track">
+          {#if vpct !== null}
+            <span class="status-spec-fill" style="width:{vpct}%"></span>
+          {:else}
+            <span class="status-spec-indeterminate"></span>
+          {/if}
+        </span>
+        {#if vpct !== null}<span class="status-spec-pct">{vpct}%</span>{/if}
+      </span>
+    {/if}
     {#if showFps}
       <span class="status-fps">{timelineFps} fps</span>
     {/if}
@@ -5704,10 +5896,15 @@ function ctxEditUttTier() {
           ['1', '2', '2.5', '5', '10', '20'],
           v => { const n = parseFloat(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, hopSec: n / 1000 }) }
         )}
+        {@render numCombo('spec-min-freq', 'Min freq', 'Hz',
+          String(spectrogramSettings.viewMinHz),
+          ['0', '50', '100', '200', '500', '1000'],
+          v => { const n = parseInt(v); if (n >= 0 && n < spectrogramSettings.maxFreqHz) applySpectrogramSettings({ ...spectrogramSettings, viewMinHz: n }) }
+        )}
         {@render numCombo('spec-max-freq', 'Max freq', 'Hz',
           String(spectrogramSettings.maxFreqHz),
           ['4000', '5000', '5500', '8000', '12000', '22050'],
-          v => { const n = parseInt(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, maxFreqHz: n }) }
+          v => { const n = parseInt(v); if (n > spectrogramSettings.viewMinHz) applySpectrogramSettings({ ...spectrogramSettings, maxFreqHz: n }) }
         )}
         {@render numCombo('spec-dynamic-range', 'Dyn. range', 'dB',
           String(spectrogramSettings.dynamicRangeDb),
@@ -5719,6 +5916,11 @@ function ctxEditUttTier() {
           ['1.0', '1.2', '1.5', '1.7', '2.0', '2.5'],
           v => { const n = parseFloat(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, gamma: n }) }
         )}
+        {@render numCombo('spec-preemph', 'Pre-emphasis', 'dB/oct',
+          String(spectrogramSettings.preEmphasisDbPerOct),
+          ['0', '6', '9', '12'],
+          v => { const n = parseFloat(v); if (n >= 0) applySpectrogramSettings({ ...spectrogramSettings, preEmphasisDbPerOct: n }) }
+        )}
 
         <div class="spec-modal-row">
           <label class="spec-modal-label" for="spec-scale">Scale</label>
@@ -5729,15 +5931,83 @@ function ctxEditUttTier() {
           </select>
         </div>
         <div class="spec-modal-row">
-          <label class="spec-modal-label" for="spec-mono-mix">Mono mix</label>
-          <input id="spec-mono-mix" type="checkbox" checked={spectrogramSettings.monoMix}
-            onchange={(e) => applySpectrogramSettings({ ...spectrogramSettings, monoMix: e.currentTarget.checked })} />
+          <span class="spec-modal-label">Mono mix</span>
+          <button type="button" class="spec-modal-checkbtn" aria-label="Mono mix"
+            onclick={() => applySpectrogramSettings({ ...spectrogramSettings, monoMix: !spectrogramSettings.monoMix })}>
+            <span class="mb-check" class:mb-checked={spectrogramSettings.monoMix}></span>
+          </button>
         </div>
         {#if spectrogramSettings.scale === 'mel'}
           {@render numCombo('spec-mel-bands', 'Mel bands', '',
             String(spectrogramSettings.melBands),
             ['40', '60', '80', '128'],
             v => { const n = parseInt(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, melBands: n }) }
+          )}
+        {/if}
+
+        <div class="spec-modal-divider"></div>
+        <div class="spec-modal-section-label">Analyzers</div>
+        <div class="spec-modal-row">
+          <span class="spec-modal-label">Voice activity (VAD)</span>
+          <button type="button" class="spec-modal-checkbtn" aria-label="Voice activity detection"
+            onclick={() => {
+              vadEnabled = !vadEnabled
+              if (vadEnabled) _maybeComputeVad()
+              else { vadComputed = false; vadComputing = false; vadProgress = null; mergedVadSegments = []; timelineRef?.setVadSegments([]) }
+            }}>
+            <span class="mb-check" class:mb-checked={vadEnabled}></span>
+          </button>
+        </div>
+
+        {#if vadEnabled}
+          <div class="spec-modal-section-label">Voice activity (VAD)</div>
+          {@render numCombo('vad-threshold', 'Threshold', '',
+            String(vadSettings.positiveThreshold),
+            ['0.2', '0.25', '0.3', '0.4', '0.5', '0.6'],
+            v => { const n = parseFloat(v); if (n > 0 && n < 1) applyVadSettings({ ...vadSettings, positiveThreshold: n, negativeThreshold: Math.max(0.05, n - 0.1) }) }
+          )}
+          {@render numCombo('vad-pause', 'Split pause', 'ms',
+            String(vadSettings.redemptionMs),
+            ['100', '150', '250', '400', '700', '1400'],
+            v => { const n = parseInt(v); if (n > 0) applyVadSettings({ ...vadSettings, redemptionMs: n }) }
+          )}
+          {@render numCombo('vad-min-speech', 'Min speech', 'ms',
+            String(vadSettings.minSpeechMs),
+            ['100', '150', '250', '400', '600'],
+            v => { const n = parseInt(v); if (n > 0) applyVadSettings({ ...vadSettings, minSpeechMs: n }) }
+          )}
+        {/if}
+
+        <div class="spec-modal-divider"></div>
+        <div class="spec-modal-section-label">Pitch (over waveform)</div>
+        <div class="spec-modal-row">
+          <label class="spec-modal-label" for="pitch-backend">Algorithm</label>
+          <select id="pitch-backend" class="spec-modal-sel" value={pitchSettings.backend}
+            onchange={(e) => applyPitchDetect({ backend: e.currentTarget.value as 'yin' | 'swiftf0' })}>
+            <option value="yin">YIN (fast)</option>
+            <option value="swiftf0">SwiftF0 (robust)</option>
+          </select>
+        </div>
+        {@render numCombo('pitch-confidence', 'Confidence', '',
+          String(pitchSettings.confidenceThreshold),
+          ['0.3', '0.4', '0.5', '0.6', '0.7', '0.8'],
+          v => { const n = parseFloat(v); if (n >= 0 && n <= 1) applyPitchFilter({ confidenceThreshold: n }) }
+        )}
+        {@render numCombo('pitch-min-hz', 'Min freq', 'Hz',
+          String(pitchSettings.minHz),
+          ['50', '65', '75', '100'],
+          v => { const n = parseInt(v); if (n > 0) applyPitchFilter({ minHz: n }) }
+        )}
+        {@render numCombo('pitch-max-hz', 'Max freq', 'Hz',
+          String(pitchSettings.maxHz),
+          ['300', '400', '500', '600', '800'],
+          v => { const n = parseInt(v); if (n > 0) applyPitchFilter({ maxHz: n }) }
+        )}
+        {#if pitchSettings.backend === 'yin'}
+          {@render numCombo('pitch-threshold', 'Threshold', '',
+            String(pitchSettings.threshold),
+            ['0.1', '0.15', '0.2', '0.25'],
+            v => { const n = parseFloat(v); if (n > 0 && n < 1) applyPitchDetect({ threshold: n }) }
           )}
         {/if}
       </div>
@@ -5863,22 +6133,41 @@ function ctxEditUttTier() {
         {/if}
         {#each grp.sigs as sig (sig.id)}
           {@const parts = sig.id.split(':')}
-          {@const shortLabel = parts.length >= 3
-            ? `${parts[1]} ${parseInt(parts[2]!.replace('ch','')) === 0 ? 'L' : parseInt(parts[2]!.replace('ch','')) === 1 ? 'R' : parts[2]}`
-            : sig.label}
-          <label class="tl-gear-item" class:tl-gear-item-indent={sigGroups.length > 1}>
-            <input type="checkbox" checked={!hiddenSignalIds.has(sig.id)}
-              onchange={() => {
-                const next = new SvelteSet(hiddenSignalIds)
-                if (next.has(sig.id)) next.delete(sig.id)
-                else next.add(sig.id)
-                hiddenSignalIds = next
-                _flushSignals()
-              }} />
-            {shortLabel}
-          </label>
+          {@const chLabel = parts.length >= 3
+            ? (parseInt(parts[2]!.replace('ch','')) === 0 ? 'L' : parseInt(parts[2]!.replace('ch','')) === 1 ? 'R' : parts[2]!)
+            : ''}
+          {@const shortLabel = parts.length >= 3 ? `${parts[1]} ${chLabel}` : sig.label}
+          <button class="tl-gear-item" class:tl-gear-item-indent={sigGroups.length > 1}
+            onclick={() => {
+              const next = new SvelteSet(hiddenSignalIds)
+              if (next.has(sig.id)) next.delete(sig.id)
+              else next.add(sig.id)
+              hiddenSignalIds = next
+              _flushSignals()
+            }}>
+            <span class="mb-check" class:mb-checked={!hiddenSignalIds.has(sig.id)}></span>{shortLabel}
+          </button>
         {/each}
       {/each}
+
+      {#if mediaSignals.some(s => s.kind === 'waveform')}
+        <div class="tl-gear-divider"></div>
+        {#each sigGroups as grp (grp.pid)}
+          {#each grp.sigs.filter(s => s.kind === 'waveform') as sig (sig.id)}
+            {@const n = parseInt(sig.id.split(':')[2]!.replace('ch',''))}
+            {@const chLabel = n === 0 ? 'L' : n === 1 ? 'R' : `ch${n}`}
+            <button class="tl-gear-item" class:tl-gear-item-indent={sigGroups.length > 1}
+              onclick={() => {
+                if (pitchChannels.has(sig.id)) pitchChannels.delete(sig.id)
+                else pitchChannels.add(sig.id)
+                _maybeComputePitch()
+                _syncPitchOverlay()
+              }}>
+              <span class="mb-check" class:mb-checked={pitchChannels.has(sig.id)}></span>{sigGroups.length > 1 ? `${grp.header} pitch ${chLabel}` : `pitch ${chLabel}`}
+            </button>
+          {/each}
+        {/each}
+      {/if}
     {/if}
 
     {#if mediaSignals.some(s => s.kind === 'spectrogram')}
@@ -5896,17 +6185,16 @@ function ctxEditUttTier() {
         {@const depth = laneMenuDepth(lane.id)}
         {@const selfHidden = hiddenLaneIds.has(lane.id)}
         {@const parentHidden = isLaneHidden(lane.id) && !selfHidden}
-        <label class="tl-gear-item" class:tl-gear-item-dim={parentHidden} style="padding-left:{10 + depth * 12}px">
-          <input type="checkbox" checked={!selfHidden && !parentHidden} disabled={parentHidden}
-            onchange={() => {
-              const next = new SvelteSet(hiddenLaneIds)
-              if (next.has(lane.id)) next.delete(lane.id)
-              else next.add(lane.id)
-              hiddenLaneIds = next
-              timelineRef?.setLanes(timelineData.lanes.filter(l => !isLaneHidden(l.id)))
-            }} />
-          {lane.label}
-        </label>
+        <button class="tl-gear-item" class:tl-gear-item-dim={parentHidden} disabled={parentHidden} style="padding-left:{10 + depth * 12}px"
+          onclick={() => {
+            const next = new SvelteSet(hiddenLaneIds)
+            if (next.has(lane.id)) next.delete(lane.id)
+            else next.add(lane.id)
+            hiddenLaneIds = next
+            timelineRef?.setLanes(timelineData.lanes.filter(l => !isLaneHidden(l.id)))
+          }}>
+          <span class="mb-check" class:mb-checked={!selfHidden && !parentHidden}></span>{lane.label}
+        </button>
       {/each}
     {/if}
 
@@ -6782,6 +7070,9 @@ function ctxEditUttTier() {
     white-space: nowrap;
   }
   .tl-gear-item:hover { background: var(--color-bg-menu-hover); }
+  /* toggle rows are <button>s carrying an .mb-check span (same as the top-bar menus) */
+  button.tl-gear-item { border: none; background: none; width: 100%; text-align: left; color: var(--color-text-1); font: inherit; font-size: 12px; }
+  .tl-gear-item .mb-check { margin-left: 0; }
   .tl-gear-item-dim { opacity: 0.45; cursor: default; }
   .tl-gear-item-dim:hover { background: transparent; }
   .tl-gear-item-indent { padding-left: 18px; }
@@ -6908,6 +7199,8 @@ function ctxEditUttTier() {
     flex-shrink: 0;
     font-size: 12px;
   }
+  .spec-modal-checkbtn { border: none; background: none; padding: 0; margin: 0; cursor: pointer; display: inline-flex; align-items: center; }
+  .spec-modal-checkbtn .mb-check { margin-left: 0; }
   .spec-modal-sel {
     flex: 1;
     font-size: 12px;

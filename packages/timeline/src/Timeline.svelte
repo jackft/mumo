@@ -87,6 +87,7 @@
   let cursorGfx: PIXI.Graphics
   let peerGfx: PIXI.Graphics
   let signalGfx: PIXI.Graphics
+  let pitchGfx:  PIXI.Graphics   // pitch overlay — above the spectrogram sprites (signalContainer)
   let tickGfx:   PIXI.Graphics
   let motionGfx: PIXI.Graphics
   let signalContainer: PIXI.Container
@@ -169,27 +170,34 @@
     for (let i = 0; i < raw.length; i++) u32[i] = lut[raw[i]!]!
     return rgba
   }
-  // Returns [p2, p99] quantised rawDb values from visible tiles in one histogram pass.
+  // Returns [p2, p99] quantised rawDb values from visible tiles in one histogram pass. When a
+  // frequency crop is active the scan is limited to the displayed rows so contrast autoscales to
+  // what's shown (matching Praat's per-view autoscale), not the cropped-out high bins.
   function _viewportRange(
     tiles: SpectrogramTile[] | undefined, overview: SpectrogramTile | undefined,
     useDetail: boolean, viewStart: number, viewEnd: number, tOffset: number,
+    crop: FreqCrop | null = null,
   ): [number, number] {
     const hist = new Uint32Array(256)
     let total = 0
     if (useDetail && tiles) {
       for (const tile of tiles) {
         if (!tile.rawDb || tile.timeEnd + tOffset <= viewStart || tile.timeStart + tOffset >= viewEnd) continue
-        const raw = tile.rawDb
-        for (let i = 0; i < raw.length; i++) { const v = raw[i]!; hist[v] = (hist[v]! + 1) }
-        total += raw.length
+        const raw = tile.rawDb, w = tile.width, h = tile.height
+        const rLo = crop ? Math.max(0, Math.floor(crop.top01 * h)) : 0
+        const rHi = crop ? Math.min(h, Math.ceil(crop.bot01 * h)) : h
+        for (let row = rLo; row < rHi; row++)
+          for (let col = 0; col < w; col++) { const v = raw[row * w + col]!; hist[v] = (hist[v]! + 1); total++ }
       }
     } else if (overview?.rawDb) {
       const ov = overview, raw = ov.rawDb!, w = ov.width, h = ov.height
       const t0 = ov.timeStart + tOffset, span = ov.timeEnd - ov.timeStart
       const c0 = Math.max(0, Math.floor((viewStart - t0) / span * w))
       const c1 = Math.min(w,  Math.ceil ((viewEnd   - t0) / span * w))
+      const rLo = crop ? Math.max(0, Math.floor(crop.top01 * h)) : 0
+      const rHi = crop ? Math.min(h, Math.ceil(crop.bot01 * h)) : h
       for (let col = c0; col < c1; col++)
-        for (let row = 0; row < h; row++) { const v = raw[row * w + col]!; hist[v] = (hist[v]! + 1); total++ }
+        for (let row = rLo; row < rHi; row++) { const v = raw[row * w + col]!; hist[v] = (hist[v]! + 1); total++ }
     }
     if (total === 0) return [50, 200]
     const loThresh = Math.ceil(total * 0.10)
@@ -677,6 +685,10 @@
     return entry.tex
   }
 
+  // Frequency-window crop: fractional row bounds into the texture (0 = top row = highest freq,
+  // 1 = bottom row = 0 Hz). null = show the full stored height.
+  interface FreqCrop { top01: number; bot01: number }
+
   function addSpriteTile(
     tile: SpectrogramTile,
     tex: PIXI.Texture,
@@ -684,11 +696,20 @@
     height: number,
     xScale: LinearScale,
     tOffset = 0,
+    crop: FreqCrop | null = null,
   ): void {
     const x = xScale.map(tile.timeStart + tOffset)
     const w = xScale.map(tile.timeEnd + tOffset) - x
     if (w <= 0) return
-    const sprite = new PIXI.Sprite(tex)
+    let drawTex = tex
+    if (crop) {
+      // Sub-rectangle of the texture rows, sharing the same GPU source (no re-upload).
+      const th = tex.source.height
+      const fy = Math.max(0, Math.min(th - 1, Math.round(crop.top01 * th)))
+      const fh = Math.max(1, Math.min(th - fy, Math.round((crop.bot01 - crop.top01) * th)))
+      drawTex = new PIXI.Texture({ source: tex.source, frame: new PIXI.Rectangle(0, fy, tex.source.width, fh) })
+    }
+    const sprite = new PIXI.Sprite(drawTex)
     sprite.x = x; sprite.y = y
     sprite.width = w; sprite.height = height
     signalContainer.addChild(sprite)
@@ -979,6 +1000,7 @@
     const sigLayouts = buildSignalLayouts()
 
     signalGfx.clear()
+    pitchGfx.clear()
     signalContainer.removeChildren()
     hzGfx.clear()
     _hzIdx = 0
@@ -1008,6 +1030,16 @@
 
         const tOffset = ch.timeOffset ?? 0
 
+        // Frequency window: crop the stored [0, ceiling] rows to the displayed [viewMinHz, viewMaxHz]
+        // at render time (no recompute). ceiling comes from the tiles' true stored top frequency.
+        const ceiling = (overview?.maxFreqHz ?? tiles?.find(t => t?.maxFreqHz)?.maxFreqHz ?? ch.maxFreqHz) || 0
+        const viewMin = Math.max(0, ch.viewMinHz ?? 0)
+        const viewMax = Math.min(ceiling || (ch.viewMaxHz ?? ch.maxFreqHz ?? 0), ch.viewMaxHz ?? ch.maxFreqHz ?? ceiling)
+        const cropActive = ceiling > 0 && (viewMin > 1 || viewMax < ceiling - 1) && viewMax > viewMin
+        const freqCrop: FreqCrop | null = cropActive
+          ? { top01: 1 - viewMax / ceiling, bot01: 1 - viewMin / ceiling }
+          : null
+
         // Determine whether detail tiles are worth rendering at current zoom.
         // If more than MAX_VISIBLE_TILES would be visible, they'd blow GPU memory
         // and provide no perceptual benefit — fall back to the overview only.
@@ -1022,7 +1054,7 @@
         // Compute adaptive LUT: map [p2, p99] of visible rawDb values to the
         // full colour range so background noise stays dark and speech peaks
         // stay bright.  Single O(N) histogram scan, typically <0.5 ms.
-        const [loRaw, hiRaw] = _viewportRange(tiles, overview, useDetailTiles, viewStart, viewEnd, tOffset)
+        const [loRaw, hiRaw] = _viewportRange(tiles, overview, useDetailTiles, viewStart, viewEnd, tOffset, freqCrop)
         const lutFloor = loRaw / 255 * SPEC_DB_RANGE + SPEC_DB_FLOOR
         const dynRange = Math.max(1, hiRaw / 255 * SPEC_DB_RANGE + SPEC_DB_FLOOR - lutFloor)
         const gamma    = ch.spectrogramGamma ?? 1.2
@@ -1038,7 +1070,7 @@
         // covers regions where detail tiles haven't been received yet.
         if (overview) {
           const ovTex = getOverviewTexture(overview, lut, key)
-          if (ovTex) addSpriteTile(overview, ovTex, sl.y, sl.specH, xScale, tOffset)
+          if (ovTex) addSpriteTile(overview, ovTex, sl.y, sl.specH, xScale, tOffset, freqCrop)
         } else if (ch.imageUrl) {
           const tex = ensureTexture(ch.imageUrl)
           if (tex) {
@@ -1061,7 +1093,7 @@
           for (const tile of tiles!) {
             if (!tile || tile.timeEnd + tOffset <= viewStart || tile.timeStart + tOffset >= viewEnd) continue
             const tex = getTileTexture(tile, lut, key)
-            if (tex) addSpriteTile(tile, tex, sl.y, sl.specH, xScale, tOffset)
+            if (tex) addSpriteTile(tile, tex, sl.y, sl.specH, xScale, tOffset, freqCrop)
           }
         }
 
@@ -1080,22 +1112,26 @@
           signalContainer.addChild(lbl)
         }
 
-        // Hz frequency axis ticks — short marks on the right edge
-        if (ch.maxFreqHz && ch.maxFreqHz > 0) {
-          const pxPerHz = sl.specH / ch.maxFreqHz
-          const interval = pickHzInterval(pxPerHz, ch.maxFreqHz)
+        // Hz frequency axis ticks — short marks on the right edge, over the displayed window.
+        const axisTop = viewMax > viewMin ? viewMax : (ch.maxFreqHz || 0)
+        const axisBot = viewMax > viewMin ? viewMin : 0
+        const axisSpan = axisTop - axisBot
+        if (axisSpan > 0) {
+          const pxPerHz = sl.specH / axisSpan
+          const interval = pickHzInterval(pxPerHz, axisSpan)
           const TICK_W = 10
-          for (let hz = interval; hz < ch.maxFreqHz; hz += interval) {
-            const ty = Math.round(sl.y + sl.specH * (1 - hz / ch.maxFreqHz))
-            hzGfx.rect(w - TICK_W, ty - 1, TICK_W, 2).fill({ color: 0xffffff, alpha: 0.7 })
+          const first = Math.ceil((axisBot + 1) / interval) * interval
+          for (let hz = first; hz < axisTop; hz += interval) {
+            const ty = Math.round(sl.y + sl.specH * (1 - (hz - axisBot) / axisSpan))
+            hzGfx.rect(w - TICK_W, ty - 1, TICK_W, 2).fill({ color: palette.textLight, alpha: 0.8 })
             _hzIdx = _poolLabel(_hzPool, hzLabelContainer, _hzIdx, formatHz(hz), w - TICK_W - 2, ty, styleHz)
             _hzPool[_hzIdx - 1]!.anchor.set(1, 0.5)
           }
         }
 
 
-      // Mirror waveform from bins
-      } else if (ch.kind === 'waveform' && ch.waveformBins) {
+      // Mirror waveform from bins (skip the bars when pitchOnly — lane hidden but its pitch is on)
+      } else if (ch.kind === 'waveform' && ch.waveformBins && !ch.pitchOnly) {
         const { rms, binDuration, binCount } = ch.waveformBins
         const tOffset = ch.timeOffset ?? 0
         const color   = palette.waveform
@@ -1140,6 +1176,7 @@
 
         let penDown = false
         for (const [st, v] of ch.samples) {
+          if (Number.isNaN(v)) { penDown = false; continue }  // gap (e.g. unvoiced pitch frame)
           const spx = xScale.map(st)
           if (spx < -2 || spx > w + 2) { penDown = false; continue }
           const spy = sl.y + vpad + (1 - (v - yMin) / yRange) * drawH  // drawH uses sl.specH
@@ -1153,6 +1190,44 @@
             ? sl.y + vpad + (1 - (0 - yMin) / yRange) * drawH
             : sl.y + sl.specH - vpad
           signalGfx.moveTo(0, zeroY).lineTo(w, zeroY).stroke({ width: 1, color: palette.waveformZero, alpha: 0.5 })
+        }
+      }
+    }
+    // Pitch contour — drawn into pitchGfx (topmost) over whichever lane carries `ch.pitch` (the
+    // waveform channel). Own y-scale (percentile), unvoiced frames lift the pen; viewport-sliced.
+    for (const ch of _signals) {
+      if (!ch.pitch || ch.pitch.samples.length < 2) continue
+      const sl = sigLayouts.get(ch.id)
+      if (!sl) continue
+      const { samples, yMin, yMax } = ch.pitch
+      const pRange = yMax - yMin || 1
+      const pvpad = sl.specH * 0.08, pdrawH = sl.specH - pvpad * 2
+      const tOffset = ch.timeOffset ?? 0
+      const tLo = viewStart - tOffset, tHi = viewEnd - tOffset
+      let lo = 0, hi = samples.length
+      while (lo < hi) { const m = (lo + hi) >> 1; if (samples[m]![0] < tLo) lo = m + 1; else hi = m }
+      let pPen = false
+      for (let i = Math.max(0, lo - 1); i < samples.length; i++) {
+        const st = samples[i]![0]
+        if (st > tHi) break
+        const v = samples[i]![1]
+        if (Number.isNaN(v)) { pPen = false; continue }
+        const px = xScale.map(st + tOffset)
+        const py = Math.max(sl.y, Math.min(sl.y + sl.specH, sl.y + pvpad + (1 - (v - yMin) / pRange) * pdrawH))
+        if (!pPen) { pitchGfx.moveTo(px, py); pPen = true } else pitchGfx.lineTo(px, py)
+      }
+      pitchGfx.stroke({ width: 1.5, color: palette.pitch, alpha: 0.95 })
+
+      // Pitch Hz ticks — right edge, over the pitch's own [yMin, yMax] range (shares the Hz label pool).
+      if (pRange > 0) {
+        const interval = pickHzInterval(pdrawH / pRange, pRange)
+        const TICK_W = 10
+        const firstHz = Math.ceil((yMin + 1) / interval) * interval
+        for (let hz = firstHz; hz < yMax; hz += interval) {
+          const ty = Math.round(sl.y + pvpad + (1 - (hz - yMin) / pRange) * pdrawH)
+          hzGfx.rect(w - TICK_W, ty - 1, TICK_W, 2).fill({ color: palette.textLight, alpha: 0.8 })
+          _hzIdx = _poolLabel(_hzPool, hzLabelContainer, _hzIdx, formatHz(hz), w - TICK_W - 2, ty, styleHz)
+          _hzPool[_hzIdx - 1]!.anchor.set(1, 0.5)
         }
       }
     }
@@ -1845,6 +1920,9 @@
     const sigLayouts = mouseIsOver ? buildSignalLayouts() : null
     const specBands: Array<{ y: number; bottom: number; ch: SignalChannel }> = []
     const waveBands: Array<{ y: number; bottom: number }> = []
+    // Pitch-contour bands (waveform lanes carrying `ch.pitch`) — for the Hz crosshair/readout. pTop/pBot
+    // bound the padded draw region so the readout matches where the contour is actually plotted.
+    const pitchBands: Array<{ y: number; bottom: number; pTop: number; pBot: number; yMin: number; yMax: number }> = []
     if (sigLayouts) {
       for (const ch of _signals) {
         const sl = sigLayouts.get(ch.id)
@@ -1853,6 +1931,10 @@
           specBands.push({ y: sl.y, bottom: sl.y + sl.specH, ch })
         } else if (ch.kind === 'waveform') {
           waveBands.push({ y: sl.y, bottom: sl.y + sl.specH })
+        }
+        if (ch.pitch && ch.pitch.samples.length >= 2) {
+          const pvpad = sl.specH * 0.08, pdrawH = sl.specH - pvpad * 2
+          pitchBands.push({ y: sl.y, bottom: sl.y + sl.specH, pTop: sl.y + pvpad, pBot: sl.y + pvpad + pdrawH, yMin: ch.pitch.yMin, yMax: ch.pitch.yMax })
         }
       }
       specBands.sort((a, b) => a.y - b.y)
@@ -1933,9 +2015,23 @@
       for (const band of specBands) {
         if (curMouseY < band.y || curMouseY >= band.bottom) continue
         const lineY = Math.round(curMouseY)
-        cursorGfx.moveTo(0, lineY).lineTo(w, lineY).stroke({ width: 1, color: palette.textDark, alpha: 0.3 })
-        hzHit = band.ch.maxFreqHz! * (1 - (curMouseY - band.y) / (band.bottom - band.y))
+        cursorGfx.moveTo(0, lineY).lineTo(w, lineY).stroke({ width: 1, color: palette.textLight, alpha: 0.5 })
+        // Map within the DISPLAYED frequency window (the crop), not the stored ceiling.
+        const vMax = band.ch.viewMaxHz ?? band.ch.maxFreqHz!
+        const vMin = band.ch.viewMinHz ?? 0
+        hzHit = vMin + (vMax - vMin) * (1 - (curMouseY - band.y) / (band.bottom - band.y))
         break
+      }
+      // Pitch lanes: read the pitch frequency (own percentile y-scale), clamped in the padding.
+      if (hzHit === null) {
+        for (const band of pitchBands) {
+          if (curMouseY < band.y || curMouseY >= band.bottom) continue
+          const lineY = Math.round(curMouseY)
+          cursorGfx.moveTo(0, lineY).lineTo(w, lineY).stroke({ width: 1, color: palette.textLight, alpha: 0.5 })
+          const frac = Math.max(0, Math.min(1, 1 - (curMouseY - band.pTop) / (band.pBot - band.pTop)))
+          hzHit = band.yMin + (band.yMax - band.yMin) * frac
+          break
+        }
       }
     }
     if (onHzChange) onHzChange(hzHit)
@@ -2500,6 +2596,7 @@
     cursorGfx      = new PIXI.Graphics()
     peerGfx        = new PIXI.Graphics()
     signalGfx      = new PIXI.Graphics()
+    pitchGfx       = new PIXI.Graphics()
     signalContainer = new PIXI.Container()
     hzGfx             = new PIXI.Graphics()
     hzLabelContainer  = new PIXI.Container()
@@ -2517,6 +2614,7 @@
     app.stage.addChild(laneGfx)
     app.stage.addChild(signalGfx)
     app.stage.addChild(signalContainer)
+    app.stage.addChild(pitchGfx)   // over the spectrogram sprites
     app.stage.addChild(hzGfx)
     app.stage.addChild(hzLabelContainer)
     app.stage.addChild(tierLabelContainer)

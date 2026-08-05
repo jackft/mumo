@@ -54,35 +54,11 @@ export function computeEnergyVad(
 }
 
 
-async function runSileroVad(samples: Float32Array, sampleRate: number): Promise<VadSegment[] | null> {
-  try {
-    const { NonRealTimeVAD } = await import('@ricky0123/vad-web')
-    const vad = await NonRealTimeVAD.new({
-      modelURL: new URL('./silero_vad_legacy.onnx', import.meta.url).href,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      ortConfig: (ort: any) => { ort.env.wasm.numThreads = 1; ort.env.wasm.wasmPaths = new URL('./', import.meta.url).href },
-    })
-    const segments: VadSegment[] = []
-    for await (const { start, end } of vad.run(samples, sampleRate)) {
-      segments.push({ start: start / sampleRate, end: end / sampleRate })
-    }
-    return segments
-  } catch {
-    return null
-  }
-}
-
-export async function runVadForAllChannels(
-  channels: Float32Array[],
-  sampleRate: number,
-  frameRMSCache: Float32Array[],
-  hop: number,
-): Promise<VadSegment[]> {
+/** Merge per-channel VAD segments into a single "is anyone speaking" timeline: sort by start
+ *  and coalesce segments that touch or overlap (within 50 ms). Used by the Silero VAD plugin. */
+export function mergeVadSegments(perChannel: VadSegment[][]): VadSegment[] {
   const all: VadSegment[] = []
-  for (let ch = 0; ch < channels.length; ch++) {
-    const result = await runSileroVad(channels[ch]!, sampleRate)
-    all.push(...(result ?? computeEnergyVad(frameRMSCache[ch]!, sampleRate, hop)))
-  }
+  for (const segs of perChannel) all.push(...segs)
   all.sort((a, b) => a.start - b.start)
   const merged: VadSegment[] = []
   for (const seg of all) {

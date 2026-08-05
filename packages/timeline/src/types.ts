@@ -103,6 +103,7 @@ export interface SpectrogramTile {
   timeEnd: number    // seconds
   rawDb?: Uint8Array          // detail tiles from worker
   pixels?: Uint8ClampedArray  // overview / legacy RGBA
+  maxFreqHz?: number // actual top frequency the rows cover (may exceed the displayed view range)
 }
 
 export interface SignalChannel {
@@ -124,6 +125,11 @@ export interface SignalChannel {
   imageTimeEnd?: number              // seconds; defaults to document end
   /** Time offset in seconds — shifts the entire channel (waveform + spectrogram) forward in the timeline */
   timeOffset?: number
+  // 'waveform': optional pitch contour drawn over the lane (per channel). times are in the
+  // channel's own timebase (timeOffset applies); NaN value = unvoiced gap (pen lifts).
+  pitch?: { samples: Array<[number, number]>; yMin: number; yMax: number }
+  // 'waveform': draw only the pitch overlay, not the waveform bars (lane hidden but pitch on)
+  pitchOnly?: boolean
   // gamma applied to the normalised [0,1] value before colourmap; >1 suppresses noise, <1 boosts weak signals
   spectrogramGamma?: number
   // onset timestamps in seconds — used for snap-to-audio (must be sorted ascending)
@@ -133,8 +139,11 @@ export interface SignalChannel {
   // per-frequency-band onsets for frequency-sensitive snapping (low → high band)
   bandOnsets?: Float32Array[]
   bandOnsetStrengths?: Float32Array[]
-  // upper frequency bound for spectrogram y-axis mapping and Hz ticks
+  // 'spectrogram': top frequency the stored tile rows cover (bins go [0, maxFreqHz]). The
+  // displayed window is [viewMinHz, viewMaxHz] ⊆ [0, maxFreqHz], cropped at render (no recompute).
   maxFreqHz?: number
+  viewMinHz?: number   // bottom of the displayed frequency window (default 0)
+  viewMaxHz?: number   // top of the displayed frequency window (default maxFreqHz)
   // how many dB below the viewport 95th-percentile peak to show (default 70)
   spectrogramDynamicRangeDb?: number
   // TextGrid-style annotation overlay

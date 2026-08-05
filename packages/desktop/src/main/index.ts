@@ -56,6 +56,10 @@ function createWindow(): BrowserWindow {
   if (!isMac) win.setMenuBarVisibility(false)
 
   if (process.env['ELECTRON_RENDERER_URL']) {
+    // [PERF] temporary: mirror renderer [PERF] logs to the terminal for easy copy/paste
+    win.webContents.on('console-message', (_e, _level, message) => {
+      if (message.startsWith('[PERF')) console.log(message)
+    })
     void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
     win.webContents.openDevTools()
   } else {

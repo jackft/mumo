@@ -347,31 +347,35 @@ export class VideoRenderer {
     const iter       = this._videoSink.canvases(localTime)
     this._videoIter  = iter
 
-    const firstResult = await iter.next()
-    if (id !== this._asyncId) return
-    if (!firstResult.done) this._applyFrame(firstResult.value)
-
-    // Pre-buffer so tick() has frames immediately when play() starts
-    const minPreBuffered = Math.min(3, FRAME_QUEUE_SIZE - 1)
-    while (this._frameQueue.length < minPreBuffered) {
-      const r = await iter.next()
+    try {
+      const firstResult = await iter.next()
       if (id !== this._asyncId) return
-      if (r.done) break
-      this._frameQueue.push(r.value)
-    }
+      if (!firstResult.done) this._applyFrame(firstResult.value)
+
+      // Pre-buffer so tick() has frames immediately when play() starts
+      const minPreBuffered = Math.min(3, FRAME_QUEUE_SIZE - 1)
+      while (this._frameQueue.length < minPreBuffered) {
+        const r = await iter.next()
+        if (id !== this._asyncId) return
+        if (r.done) break
+        this._frameQueue.push(r.value)
+      }
+    } catch { return /* input disposed/reloaded mid-prebuffer — normal teardown */ }
 
     void this._fillQueue(iter, id)
   }
 
   private async _fillQueue(iter: AsyncGenerator<WrappedCanvas>, id: number): Promise<void> {
-    for await (const frame of iter) {
-      if (id !== this._asyncId) break
-      this._frameQueue.push(frame)
-      if (this._frameQueue.length >= FRAME_QUEUE_SIZE) {
-        await new Promise<void>(r => { this._queueSpace = r })
+    try {
+      for await (const frame of iter) {
         if (id !== this._asyncId) break
+        this._frameQueue.push(frame)
+        if (this._frameQueue.length >= FRAME_QUEUE_SIZE) {
+          await new Promise<void>(r => { this._queueSpace = r })
+          if (id !== this._asyncId) break
+        }
       }
-    }
+    } catch { /* input disposed while streaming frames — normal teardown */ }
   }
 
   /** Consume queued frames whose file-local time ≤ (globalTimeSec - offset). Returns true if frame was drawn. */

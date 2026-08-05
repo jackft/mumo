@@ -1,10 +1,10 @@
-export type { SpectrogramSettings, MediaState, MediaTrack, WorkerRequest, WorkerResponse, VadSegment, SpectrogramTile, WaveformBins, FrameStat } from './types.js'
-export { SPEC_PRESETS, DEFAULT_SPEC_SETTINGS, PREVIEW_SPEC_SETTINGS } from './types.js'
+export type { SpectrogramSettings, MediaState, MediaTrack, WorkerRequest, WorkerResponse, VadSegment, VadSettings, PitchTrack, PitchSettings, PitchBackend, SpectrogramTile, WaveformBins, FrameStat } from './types.js'
+export { SPEC_PRESETS, DEFAULT_SPEC_SETTINGS, PREVIEW_SPEC_SETTINGS, DEFAULT_VAD_SETTINGS, DEFAULT_PITCH_SETTINGS } from './types.js'
 
 export type { PlatformIO, DesktopPlatformIO, FontEntry, SystemFonts } from './platform.js'
 export { guessMime, isDesktop } from './platform.js'
 
-export type { SignalPlugin, AudioCtx, SignalPost } from './plugins/signal/SignalPlugin.js'
+export type { SignalPlugin, SignalRun, StreamInit, AudioSegment, SignalPost } from './plugins/signal/SignalPlugin.js'
 export type { VideoPlugin } from './plugins/video/VideoPlugin.js'
 
 export { MediaPlayer } from './MediaPlayer.js'
@@ -30,3 +30,4 @@ export * as PIXI from 'pixi.js'
 export { TrackOverlayPlugin, TRACK_COLORS } from './plugins/video/TrackOverlayPlugin.js'
 export type { VizOptions } from './plugins/video/TrackOverlayPlugin.js'
 export { computeEnergyVad } from './plugins/signal/vad.js'
+export { smoothOctaves } from './plugins/signal/praatPitch.js'

@@ -33,5 +33,6 @@ export const palette = {
   loopRegion:      0xff8800,
   waveform:        0x888888,
   waveformZero:    0xcccccc,
+  pitch:           0x2979ff,  // blue
   signalHandle:    0xd0d0d0,
 } as const

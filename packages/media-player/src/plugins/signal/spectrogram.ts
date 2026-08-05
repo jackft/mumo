@@ -3,12 +3,13 @@ import type { SpectrogramTile } from '@mumo/timeline'
 const SPEC_DB_FLOOR = -160
 const SPEC_DB_RANGE = 160
 import type { SpectrogramSettings } from '../../types.js'
-import { PREVIEW_SPEC_SETTINGS } from '../../types.js'
-import type { SignalPlugin, AudioCtx, SignalPost } from './SignalPlugin.js'
-import { runVadForAllChannels } from './vad.js'
+import { SPEC_FREQ_HEADROOM } from '../../types.js'
+import type { SignalPlugin, SignalRun, StreamInit, AudioSegment, SignalPost } from './SignalPlugin.js'
 
 let wasmSB: typeof WasmSampleBuffer | null = null
 export function setSampleBuffer(sb: typeof WasmSampleBuffer): void { wasmSB = sb }
+/** The loaded Rust/WASM SampleBuffer class (null until the worker loads it), shared with the pitch plugin. */
+export function getSampleBuffer(): typeof WasmSampleBuffer | null { return wasmSB }
 
 const TILE_FRAMES     = 2048
 const OVERVIEW_MAX_WIDTH = 4096
@@ -20,15 +21,24 @@ function windowCode(w: SpectrogramSettings['window']): number {
   return 0
 }
 
-function nearestPow2(n: number): number {
-  const lower = Math.pow(2, Math.floor(Math.log2(Math.max(n, 1))))
-  const upper = lower * 2
-  return upper - n < n - lower ? upper : lower
+function nextPow2(n: number): number {
+  return Math.pow(2, Math.ceil(Math.log2(Math.max(n, 1))))
 }
 
+// Praat framing (`Sound_to_Spectrogram`): the user's `windowLengthSec` is the *effective* width; a
+// Gaussian window is physically **twice** that (so its tails aren't chopped), other windows 1×. The
+// physical window (rounded to an even sample count) is then **zero-padded up to a power-of-two FFT**
+// (Praat pads up; we used to round to the *nearest* pow2, which truncated the window). The extra
+// frequency interpolation + the wider Gaussian is what gives Praat its smooth, harmonic-resolving look.
 function toSamples(settings: SpectrogramSettings, sampleRate: number) {
+  const effSamples = settings.windowLengthSec * sampleRate
+  const physical = settings.window === 'gaussian' ? 2 * effSamples : effSamples
+  let physicalWindowSize = Math.max(2, Math.round(physical))
+  if (physicalWindowSize & 1) physicalWindowSize += 1     // even, as Praat makes nsamp_window even
+  const fftSize = Math.max(nextPow2(physicalWindowSize), 2)
   return {
-    windowSize: nearestPow2(settings.windowLengthSec * sampleRate),
+    physicalWindowSize,
+    fftSize,
     hop: Math.max(1, Math.round(settings.hopSec * sampleRate)),
   }
 }
@@ -60,16 +70,20 @@ function fft(re: Float64Array, im: Float64Array): void {
   }
 }
 
+// Window over `size` (physical) samples, using Praat's centered phase `p = (i − (n−1)/2)/n ∈ [−½, ½]`.
+// Gaussian is Praat's truncated form `(exp(−48p²) − e⁻¹²)/(1 − e⁻¹²)` (≈0 at the physical edges),
+// paired with the 2×-effective physical width from toSamples so the Gaussian is genuinely un-chopped.
 function buildWindow(size: number, kind: SpectrogramSettings['window']): Float32Array {
   const w = new Float32Array(size)
+  const edge = Math.exp(-12), gnorm = 1 / (1 - edge)
   for (let i = 0; i < size; i++) {
+    const p = (i - (size - 1) / 2) / size   // [-0.5, 0.5]
     if (kind === 'hamming') {
-      w[i] = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (size - 1))
+      w[i] = 0.54 + 0.46 * Math.cos(2 * Math.PI * p)
     } else if (kind === 'gaussian') {
-      const half = size / 2, t = (i - half) / half
-      w[i] = Math.exp(-Math.PI * t * t)
+      w[i] = (Math.exp(-48 * p * p) - edge) * gnorm
     } else {
-      w[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (size - 1))
+      w[i] = 0.5 + 0.5 * Math.cos(2 * Math.PI * p)   // Hann
     }
   }
   return w
@@ -96,33 +110,34 @@ function buildMelFilterbankJS(sampleRate: number, numLinearBins: number, melBand
   })
 }
 
-function applyMelJS(re: Float64Array, im: Float64Array, filterbank: MelBand[], curMag: Float32Array): void {
+function applyMelJS(re: Float64Array, im: Float64Array, filterbank: MelBand[], curMag: Float32Array, energyScale = 1): void {
   for (let m = 0; m < filterbank.length; m++) {
     let energy = 0
     for (const [k, w] of filterbank[m]!) {
       const r = re[k]!, im_ = im[k]!
       energy += (r * r + im_ * im_) * w
     }
-    curMag[m] = 10 * Math.log10(energy + 1e-20)
+    curMag[m] = 10 * Math.log10(energy * energyScale + 1e-20)
   }
 }
 
 function computeSpectrogramStatsJS(
   samples: Float32Array,
   sampleRate: number,
-  windowSize: number,
+  fftSize: number,
   hop: number,
   maxFreqHz: number,
   dynamicRangeDb: number,
-  win: Float32Array,
+  win: Float32Array,   // win.length = physical window; frame is zero-padded to fftSize
   melFilterbank: MelBand[] | null,
   onProgress?: (done: number) => void,
 ) {
   maxFreqHz = Math.min(maxFreqHz, sampleRate / 2)
-  const maxBin = Math.round(maxFreqHz / (sampleRate / windowSize))
-  const numLinearBins = Math.min(maxBin, windowSize / 2)
+  const winLen = win.length
+  const maxBin = Math.round(maxFreqHz / (sampleRate / fftSize))
+  const numLinearBins = Math.min(maxBin, fftSize / 2)
   const numFreqBins = melFilterbank ? melFilterbank.length : numLinearBins
-  const numFrames = Math.max(1, Math.floor((samples.length - windowSize) / hop) + 1)
+  const numFrames = Math.max(1, Math.floor((samples.length - fftSize) / hop) + 1)
   const overviewWidth = Math.min(numFrames, OVERVIEW_MAX_WIDTH)
   const overviewBinSize = Math.ceil(numFrames / overviewWidth)
   const overviewAccum = new Float64Array(overviewWidth * numFreqBins)
@@ -131,14 +146,14 @@ function computeSpectrogramStatsJS(
   const bandFlux = new Float32Array(numFrames * NUM_SNAP_BANDS)
   const frameRMS = new Float32Array(numFrames)
   let globalMin = Infinity, globalMax = -Infinity
-  const re = new Float64Array(windowSize), im = new Float64Array(windowSize)
+  const re = new Float64Array(fftSize), im = new Float64Array(fftSize)
   const prevMag = new Float32Array(numFreqBins), curMag = new Float32Array(numFreqBins)
   const framePeakDb = new Float32Array(numFrames)
 
   for (let f = 0; f < numFrames; f++) {
     const frameStart = f * hop
     re.fill(0); im.fill(0)
-    for (let j = 0; j < windowSize; j++) {
+    for (let j = 0; j < winLen; j++) {
       const idx = frameStart + j
       re[j] = idx < samples.length ? (samples[idx]! * win[j]!) : 0
     }
@@ -196,37 +211,64 @@ function computeSpectrogramStatsJS(
   return { numFreqBins, numLinearBins, numFrames, overviewRawDb, overviewWidth, flux, bandFlux, frameRMS }
 }
 
+// Per-bin pre-emphasis in dB (Praat: `dbPerOct·log2(f/1000)`, 0 dB at 1 kHz, boosting highs). The
+// DC/low bins get a large negative term (as in Praat, killing the DC component). null if disabled.
+function buildPreEmphasis(
+  dbPerOct: number, numFreqBins: number, melFb: MelBand[] | null,
+  sampleRate: number, windowSize: number, maxFreqHz: number,
+): Float32Array | null {
+  if (!dbPerOct) return null
+  const out = new Float32Array(numFreqBins)
+  const binHz = sampleRate / windowSize
+  const hzToMel = (hz: number) => 2595 * Math.log10(1 + hz / 700)
+  const melToHz = (mel: number) => 700 * (Math.pow(10, mel / 2595) - 1)
+  const maxMel = hzToMel(Math.min(maxFreqHz, sampleRate / 2))
+  for (let k = 0; k < numFreqBins; k++) {
+    const freq = melFb ? melToHz((maxMel * (k + 0.5)) / numFreqBins) : k * binHz
+    out[k] = dbPerOct * (Math.log(Math.max(0, freq) / 1000 + 1e-308) / Math.LN2)
+  }
+  return out
+}
+
 // Produce a rawDb tile: one uint8 per (freq-bin, frame), quantised to SPEC_DB_FLOOR..+SPEC_DB_RANGE.
 // The Timeline applies a per-viewport LUT when uploading to GPU.
 function renderDetailTileRawDb(
   samples: Float32Array,
-  windowSize: number, hop: number, win: Float32Array,
+  fftSize: number, hop: number, win: Float32Array,   // win.length = physical window; rest zero-padded
   numLinearBins: number, numFreqBins: number,
   startFrame: number, endFrame: number,
   melFilterbank: MelBand[] | null,
+  preEmphDb: Float32Array | null,   // per-bin dB to add (Praat pre-emphasis); null = none
 ): Uint8Array {
   const tileWidth = endFrame - startFrame
+  const winLen = win.length
+  // Normalize by the window's coherent gain (Σw) so magnitudes are independent of window length —
+  // a full-scale sinusoid reads ~0 dB regardless of window size (Praat normalizes power by windowssq).
+  let winSum = 0
+  for (let j = 0; j < winLen; j++) winSum += win[j]!
+  const invWinSum = winSum > 0 ? 1 / winSum : 1
   const rawDb = new Uint8Array(tileWidth * numFreqBins)
-  const re = new Float64Array(windowSize), im = new Float64Array(windowSize)
+  const re = new Float64Array(fftSize), im = new Float64Array(fftSize)
   const curMag = new Float32Array(numFreqBins)
   for (let f = startFrame; f < endFrame; f++) {
     const frameStart = f * hop
     re.fill(0); im.fill(0)
-    for (let j = 0; j < windowSize; j++) {
+    for (let j = 0; j < winLen; j++) {
       const idx = frameStart + j
       re[j] = idx < samples.length ? (samples[idx]! * win[j]!) : 0
     }
     fft(re, im)
     if (melFilterbank) {
-      applyMelJS(re, im, melFilterbank, curMag)
+      applyMelJS(re, im, melFilterbank, curMag, invWinSum * invWinSum)
     } else {
       for (let k = 0; k < numLinearBins; k++) {
-        curMag[k] = 20 * Math.log10(Math.sqrt(re[k]! * re[k]! + im[k]! * im[k]!) + 1e-10)
+        curMag[k] = 20 * Math.log10(Math.sqrt(re[k]! * re[k]! + im[k]! * im[k]!) * invWinSum + 1e-10)
       }
     }
     const localF = f - startFrame
     for (let k = 0; k < numFreqBins; k++) {
-      const q = Math.max(0, Math.min(255, Math.round((curMag[k]! - SPEC_DB_FLOOR) / SPEC_DB_RANGE * 255)))
+      const db = curMag[k]! + (preEmphDb ? preEmphDb[k]! : 0)
+      const q = Math.max(0, Math.min(255, Math.round((db - SPEC_DB_FLOOR) / SPEC_DB_RANGE * 255)))
       rawDb[(numFreqBins - 1 - k) * tileWidth + localF] = q
     }
   }
@@ -300,181 +342,187 @@ function detectFluxPeaks(flux: Float32Array, sampleRate: number, hop: number) {
   return { timestamps: new Float32Array(events.map(e => e.time)), strengths: new Float32Array(events.map(e => e.strength)) }
 }
 
-type RunResult = { flux: Float32Array; bandFlux: Float32Array; numSnapBands: number; frameRMS: Float32Array }
 
-function runChannelWasm(
-  samples: Float32Array, sampleRate: number, duration: number,
-  settings: SpectrogramSettings, channelIndex: number,
-  doneRef: { value: number }, totalFrames: number,
-  post: SignalPost,
-): RunResult {
-  const SB = wasmSB
-  if (!SB) throw new Error('WASM not loaded')
-  const { windowSize, hop } = toSamples(settings, sampleRate)
-  const buf = new SB(samples, windowSize, windowCode(settings.window))
-  try {
-    const base = doneRef.value
-    const melBands = settings.scale === 'mel' ? settings.melBands : 0
-    const stats = buf.compute_stats(hop, settings.maxFreqHz, sampleRate, settings.dynamicRangeDb, melBands, (done: number, _total: number) => {
-      doneRef.value = base + done
-      post({ type: 'progress', done: doneRef.value, total: totalFrames })
-    })
-    const { num_freq_bins: numFreqBins, num_frames: numFrames, num_snap_bands: numSnapBands } = stats
-    // Discard WASM overview pixels — we build a rawDb overview from JS tiles instead.
-    stats.take_overview_pixels()
-    const flux     = new Float32Array(stats.take_flux())
-    const bandFlux = new Float32Array(stats.take_band_flux())
-    const frameRMS = new Float32Array(stats.take_frame_rms())
-    stats.free()
+// ---------------------------------------------------------------------------
+// Streaming run — the file is decoded in ~1-2 min segments (see the worker) so the
+// full-file PCM is never resident. Each segment computes its own flux/tiles; the
+// overview and per-frame onset features accumulate across segments and are emitted at
+// finish. Detail-tile pixels use a fixed dB encoding, so segments are self-contained
+// (no cross-segment normalization). Flux at each segment's first frame is 0 (no prior
+// frame carried across the boundary) — a negligible artifact every ~90s.
+// ---------------------------------------------------------------------------
 
-    doneRef.value = base + numFrames
-    post({ type: 'progress', done: doneRef.value, total: totalFrames })
-
-    // Emit rawDb detail tiles and accumulate into overview simultaneously.
-    const win = buildWindow(windowSize, settings.window)
-    const maxBin = Math.round(Math.min(settings.maxFreqHz, sampleRate / 2) / (sampleRate / windowSize))
-    const numLinearBinsJS = Math.min(maxBin, windowSize / 2)
-    const melFbJS = settings.scale === 'mel'
-      ? buildMelFilterbankJS(sampleRate, numLinearBinsJS, settings.melBands, settings.maxFreqHz)
-      : null
-
-    const hopDuration = hop / sampleRate, tileCount = Math.ceil(numFrames / TILE_FRAMES)
-    const ovWidth = Math.min(numFrames, OVERVIEW_MAX_WIDTH)
-    const ovBinSize = Math.ceil(numFrames / ovWidth)
-    const ovAccum = new Float32Array(ovWidth * numFreqBins)
-    const ovCount = new Uint32Array(ovWidth)
-    const p2Base = doneRef.value
-    for (let t = 0; t < tileCount; t++) {
-      const sf = t * TILE_FRAMES, ef = Math.min((t + 1) * TILE_FRAMES, numFrames)
-      const rawDb = renderDetailTileRawDb(samples, windowSize, hop, win, numLinearBinsJS, numFreqBins, sf, ef, melFbJS)
-      // Accumulate into overview (work in rawDb units to avoid float↔dB conversions)
-      for (let f = sf; f < ef; f++) {
-        const ob = Math.min(Math.floor(f / ovBinSize), ovWidth - 1)
-        const localF = f - sf
-        for (let k = 0; k < numFreqBins; k++) {
-          const idx = ob * numFreqBins + k
-          ovAccum[idx] = (ovAccum[idx]! + rawDb[(numFreqBins - 1 - k) * (ef - sf) + localF]!)
-        }
-        ovCount[ob] = ovCount[ob]! + 1
-      }
-      const tile: SpectrogramTile = { tileIndex: t, rawDb, width: ef - sf, height: numFreqBins, timeStart: sf * hopDuration, timeEnd: t === tileCount - 1 ? duration : ef * hopDuration }
-      doneRef.value = p2Base + ef
-      post({ type: 'progress', done: doneRef.value, total: totalFrames })
-      post({ type: 'spectrogramTile', channelIndex, tile }, [rawDb.buffer])
-    }
-    // Build and send the overview after all tiles so it uses the same rawDb encoding.
-    const overviewRawDb = new Uint8Array(ovWidth * numFreqBins)
-    for (let x = 0; x < ovWidth; x++) {
-      const cnt = ovCount[x] || 1
-      for (let k = 0; k < numFreqBins; k++)
-        overviewRawDb[(numFreqBins - 1 - k) * ovWidth + x] = Math.round(ovAccum[x * numFreqBins + k]! / cnt)
-    }
-    post({ type: 'spectrogramOverview', channelIndex, tile: { tileIndex: -1, rawDb: overviewRawDb, width: ovWidth, height: numFreqBins, timeStart: 0, timeEnd: duration } }, [overviewRawDb.buffer])
-
-    return { flux, bandFlux, numSnapBands, frameRMS }
-  } finally {
-    buf.free()
-  }
+/** Frame/tile grid params the worker needs to size segments to the spectrogram grid. */
+export function specFrameParams(settings: SpectrogramSettings, sampleRate: number): { hop: number; windowSize: number; tileFrames: number } {
+  const { fftSize, hop } = toSamples(settings, sampleRate)
+  // The segmenter must provide fftSize samples per frame (the JS tiles read only the physical window
+  // and zero-pad, but the WASM stats path reads the full fftSize span).
+  return { hop, windowSize: fftSize, tileFrames: TILE_FRAMES }
 }
 
-function runChannelJS(
-  samples: Float32Array, sampleRate: number, duration: number,
-  settings: SpectrogramSettings, channelIndex: number,
-  doneRef: { value: number }, totalFrames: number,
-  post: SignalPost,
-): RunResult {
-  const { windowSize, hop } = toSamples(settings, sampleRate)
-  const win = buildWindow(windowSize, settings.window)
-  const p1Base = doneRef.value
-  const maxBin = Math.round(Math.min(settings.maxFreqHz, sampleRate / 2) / (sampleRate / windowSize))
-  const numLinearBinsJS = Math.min(maxBin, windowSize / 2)
-  const melFilterbankJS = settings.scale === 'mel'
-    ? buildMelFilterbankJS(sampleRate, numLinearBinsJS, settings.melBands, settings.maxFreqHz)
-    : null
+const NOOP_PROGRESS = (() => { /* per-segment progress is reported by the run */ }) as unknown as (done: number, total: number) => void
 
-  const { numFreqBins, numLinearBins, numFrames: nf, overviewRawDb, overviewWidth, flux, bandFlux, frameRMS }
-    = computeSpectrogramStatsJS(samples, sampleRate, windowSize, hop, settings.maxFreqHz, settings.dynamicRangeDb, win, melFilterbankJS, done => {
-        doneRef.value = p1Base + done
-        post({ type: 'progress', done: doneRef.value, total: totalFrames })
-      })
-
-  doneRef.value = p1Base + nf
-  post({ type: 'spectrogramOverview', channelIndex, tile: { tileIndex: -1, rawDb: overviewRawDb, width: overviewWidth, height: numFreqBins, timeStart: 0, timeEnd: duration } }, [overviewRawDb.buffer])
-
-  const hopDuration = hop / sampleRate, tileCount = Math.ceil(nf / TILE_FRAMES), p2Base = doneRef.value
-  for (let t = 0; t < tileCount; t++) {
-    const sf = t * TILE_FRAMES, ef = Math.min((t + 1) * TILE_FRAMES, nf)
-    const rawDb = renderDetailTileRawDb(samples, windowSize, hop, win, numLinearBins, numFreqBins, sf, ef, melFilterbankJS)
-    const tile: SpectrogramTile = { tileIndex: t, rawDb, width: ef - sf, height: numFreqBins, timeStart: sf * hopDuration, timeEnd: t === tileCount - 1 ? duration : ef * hopDuration }
-    doneRef.value = p2Base + ef
-    post({ type: 'progress', done: doneRef.value, total: totalFrames })
-    post({ type: 'spectrogramTile', channelIndex, tile }, [rawDb.buffer])
+// Per-segment flux / band-flux / frame-RMS. WASM when available (native), else JS fallback.
+function computeSegmentStats(
+  samples: Float32Array, sampleRate: number, settings: SpectrogramSettings,
+  fftSize: number, hop: number, win: Float32Array, melFb: MelBand[] | null,
+): { flux: Float32Array; bandFlux: Float32Array; frameRMS: Float32Array; numSnapBands: number } {
+  if (wasmSB) {
+    const buf = new wasmSB(samples, fftSize, windowCode(settings.window))
+    try {
+      const melBands = settings.scale === 'mel' ? settings.melBands : 0
+      const stats = buf.compute_stats(hop, settings.maxFreqHz, sampleRate, settings.dynamicRangeDb, melBands, NOOP_PROGRESS)
+      const numSnapBands = stats.num_snap_bands
+      stats.take_overview_pixels()  // discard — overview is built from detail tiles
+      const flux     = new Float32Array(stats.take_flux())
+      const bandFlux = new Float32Array(stats.take_band_flux())
+      const frameRMS = new Float32Array(stats.take_frame_rms())
+      stats.free()
+      return { flux, bandFlux, frameRMS, numSnapBands }
+    } finally {
+      buf.free()
+    }
   }
-
-  return { flux, bandFlux, numSnapBands: NUM_SNAP_BANDS, frameRMS }
+  const r = computeSpectrogramStatsJS(samples, sampleRate, fftSize, hop, settings.maxFreqHz, settings.dynamicRangeDb, win, melFb)
+  return { flux: r.flux, bandFlux: r.bandFlux, frameRMS: r.frameRMS, numSnapBands: NUM_SNAP_BANDS }
 }
 
-function runPreview(ctx: AudioCtx, post: SignalPost): void {
-  const { channels, sampleRate, duration, settings } = ctx
-  const { windowSize, hop } = toSamples(PREVIEW_SPEC_SETTINGS, sampleRate)
-  const { maxFreqHz, dynamicRangeDb } = PREVIEW_SPEC_SETTINGS
-  const melBands = settings.scale === 'mel' ? settings.melBands : 0
-  const win = buildWindow(windowSize, PREVIEW_SPEC_SETTINGS.window)
-
-  for (let ch = 0; ch < channels.length; ch++) {
-    const samples = channels[ch]!
-    const maxBin = Math.round(Math.min(maxFreqHz, sampleRate / 2) / (sampleRate / windowSize))
-    const numLinearBins = Math.min(maxBin, windowSize / 2)
-    const melFb = melBands > 0 ? buildMelFilterbankJS(sampleRate, numLinearBins, melBands, maxFreqHz) : null
-    const { overviewRawDb, overviewWidth, numFreqBins } = computeSpectrogramStatsJS(samples, sampleRate, windowSize, hop, maxFreqHz, dynamicRangeDb, win, melFb)
-    post(
-      { type: 'spectrogramOverview', channelIndex: ch, tile: { tileIndex: -1, rawDb: overviewRawDb, width: overviewWidth, height: numFreqBins, timeStart: 0, timeEnd: duration } },
-      [overviewRawDb.buffer],
-    )
-  }
+interface ChannelAccum {
+  ovAccum: Float64Array
+  ovCount: Uint32Array
+  flux: Float32Array
+  frameRMS: Float32Array
+  bandFlux: Float32Array | null  // lazily sized once numSnapBands is known
+  numSnapBands: number
 }
 
 export const spectrogramPlugin: SignalPlugin = {
   id: 'spectrogram',
 
-  async analyze(ctx: AudioCtx, post: SignalPost): Promise<void> {
-    const { channels, sampleRate, duration, settings, trigger } = ctx
-    const { windowSize, hop } = toSamples(settings, sampleRate)
-    const sampleLen  = channels[0]!.length
-    const numFrames  = Math.max(1, Math.floor((sampleLen - windowSize) / hop) + 1)
-    const totalFrames = numFrames * channels.length * 2
+  createRun(init: StreamInit, post: SignalPost): SignalRun {
+    const { sampleRate, channelCount, durationSec, settings } = init
+    const { physicalWindowSize, fftSize, hop } = toSamples(settings, sampleRate)
+    // Store bins up to a headroom ceiling (linear scale only) so the displayed frequency window can
+    // be narrowed — or widened up to this ceiling — at render time without re-decoding. Mel bins are
+    // non-uniform in Hz, so mel stores exactly maxFreqHz (frequency changes recompute).
+    const storedMaxFreqHz = settings.scale === 'mel'
+      ? settings.maxFreqHz
+      : Math.min(sampleRate / 2, settings.maxFreqHz * SPEC_FREQ_HEADROOM)
+    const binHz = sampleRate / fftSize
+    const maxBin = Math.round(Math.min(storedMaxFreqHz, sampleRate / 2) / binHz)
+    const numLinearBins = Math.min(maxBin, fftSize / 2)
+    const melFb = settings.scale === 'mel'
+      ? buildMelFilterbankJS(sampleRate, numLinearBins, settings.melBands, settings.maxFreqHz)
+      : null
+    const numFreqBins = melFb ? melFb.length : numLinearBins
+    // Actual top frequency the stored rows cover (quantised to a bin edge for linear).
+    const tileMaxFreqHz = melFb ? settings.maxFreqHz : numLinearBins * binHz
+    const win = buildWindow(physicalWindowSize, settings.window)
+
+    // Praat-style pre-emphasis: +preEmphasisDbPerOct·log2(f/1000) baked per frequency bin (0 = off).
+    const preEmphDb = buildPreEmphasis(settings.preEmphasisDbPerOct, numFreqBins, melFb, sampleRate, fftSize, tileMaxFreqHz)
+
+    // Frames span fftSize samples (matches the segmenter's per-frame provision); the physical window
+    // is windowed into the zero-padded fftSize buffer inside renderDetailTileRawDb.
+    const totalSamples  = Math.max(fftSize, Math.round(durationSec * sampleRate))
+    const totalFrames   = Math.max(1, Math.floor((totalSamples - fftSize) / hop) + 1)
+    const ovWidth       = Math.min(totalFrames, OVERVIEW_MAX_WIDTH)
+    const ovBinSize     = Math.ceil(totalFrames / ovWidth)
+    const hopDuration   = hop / sampleRate
+    // totalFrames is estimated from the container duration; the actual decoded frame count
+    // (filledFrames) can be smaller (containers often over-report audio length). Progress and
+    // the overview extent are reconciled to filledFrames at finish so the overview isn't
+    // stretched across a grid wider than the real content.
+    const totalProgress = totalFrames
     const doneRef = { value: 0 }
-    const frameRMSCache: Float32Array[] = []
+    let filledFrames = 0
 
-    if (trigger !== 'reanalyze') runPreview(ctx, post)
+    const acc: ChannelAccum[] = Array.from({ length: channelCount }, () => ({
+      ovAccum: new Float64Array(ovWidth * numFreqBins),
+      ovCount: new Uint32Array(ovWidth),
+      flux: new Float32Array(totalFrames),
+      frameRMS: new Float32Array(totalFrames),
+      bandFlux: null,
+      numSnapBands: NUM_SNAP_BANDS,
+    }))
 
-    for (let ch = 0; ch < channels.length; ch++) {
-      const samples = channels[ch]!
-      let result: RunResult
+    return {
+      pushSegment(seg: AudioSegment): void {
+        const F0 = seg.firstFrame
+        const fc = Math.min(seg.frameCount, totalFrames - F0)
+        if (fc <= 0) return
+        for (let ch = 0; ch < channelCount; ch++) {
+          const samples = seg.channels[ch]!
+          const a = acc[ch]!
+          const { flux, bandFlux, frameRMS, numSnapBands } = computeSegmentStats(samples, sampleRate, settings, fftSize, hop, win, melFb)
+          if (!a.bandFlux) { a.bandFlux = new Float32Array(totalFrames * numSnapBands); a.numSnapBands = numSnapBands }
+          const nsb = a.numSnapBands
+          a.flux.set(flux.subarray(0, fc), F0)
+          a.frameRMS.set(frameRMS.subarray(0, fc), F0)
+          a.bandFlux.set(bandFlux.subarray(0, fc * nsb), F0 * nsb)
 
-      if (wasmSB) {
-        result = runChannelWasm(samples, sampleRate, duration, settings, ch, doneRef, totalFrames, post)
-      } else {
-        result = runChannelJS(samples, sampleRate, duration, settings, ch, doneRef, totalFrames, post)
-      }
+          const tileCount = Math.ceil(fc / TILE_FRAMES)
+          for (let t = 0; t < tileCount; t++) {
+            const sf = t * TILE_FRAMES, ef = Math.min((t + 1) * TILE_FRAMES, fc)
+            const tw = ef - sf
+            const rawDb = renderDetailTileRawDb(samples, fftSize, hop, win, numLinearBins, numFreqBins, sf, ef, melFb, preEmphDb)
+            for (let lf = sf; lf < ef; lf++) {
+              const g = F0 + lf
+              const ob = Math.min(Math.floor(g / ovBinSize), ovWidth - 1)
+              const col = lf - sf
+              for (let k = 0; k < numFreqBins; k++) {
+                a.ovAccum[ob * numFreqBins + k] = a.ovAccum[ob * numFreqBins + k]! + rawDb[(numFreqBins - 1 - k) * tw + col]!
+              }
+              a.ovCount[ob] = a.ovCount[ob]! + 1
+            }
+            const globalTile = (F0 / TILE_FRAMES) + t
+            const timeStart = (F0 + sf) * hopDuration
+            const timeEnd = (F0 + ef) * hopDuration
+            const tile: SpectrogramTile = { tileIndex: globalTile, rawDb, width: tw, height: numFreqBins, timeStart, timeEnd, maxFreqHz: tileMaxFreqHz }
+            post({ type: 'spectrogramTile', channelIndex: ch, tile }, [rawDb.buffer])
+          }
+        }
+        filledFrames = Math.max(filledFrames, F0 + fc)
+        doneRef.value += fc
+        post({ type: 'progress', done: doneRef.value, total: totalProgress })
+      },
 
-      const { flux, bandFlux, numSnapBands, frameRMS } = result
-      frameRMSCache[ch] = frameRMS
+      finish(): void {
+        // Reconcile to the frames actually decoded: the overview covers [0, nActual) frames, so
+        // emit only the columns those frames touched and place it at the true content end time.
+        const nActual = Math.max(1, filledFrames)
+        const ovUsed = Math.min(ovWidth, Math.max(1, Math.ceil(nActual / ovBinSize)))
+        const contentEndSec = nActual * hopDuration
+        for (let ch = 0; ch < channelCount; ch++) {
+          const a = acc[ch]!
+          const nsb = a.numSnapBands
+          const bandFlux = a.bandFlux ?? new Float32Array(totalFrames * nsb)
 
-      const { timestamps, strengths } = computeOnsets(flux, frameRMS, sampleRate, hop)
-      const bandTimestamps: Float32Array[] = [], bandStrengths: Float32Array[] = []
-      for (let b = 0; b < numSnapBands; b++) {
-        const slice = new Float32Array(flux.length)
-        for (let f = 0; f < flux.length; f++) slice[f] = bandFlux[f * numSnapBands + b]!
-        const { timestamps: bt, strengths: bs } = detectFluxPeaks(slice, sampleRate, hop)
-        bandTimestamps.push(bt); bandStrengths.push(bs)
-      }
+          const { timestamps, strengths } = computeOnsets(a.flux, a.frameRMS, sampleRate, hop)
+          const bandTimestamps: Float32Array[] = [], bandStrengths: Float32Array[] = []
+          for (let b = 0; b < nsb; b++) {
+            const slice = new Float32Array(totalFrames)
+            for (let f = 0; f < totalFrames; f++) slice[f] = bandFlux[f * nsb + b]!
+            const { timestamps: bt, strengths: bs } = detectFluxPeaks(slice, sampleRate, hop)
+            bandTimestamps.push(bt); bandStrengths.push(bs)
+          }
+          const transfer = [timestamps.buffer, strengths.buffer, ...bandTimestamps.map(x => x.buffer), ...bandStrengths.map(x => x.buffer)]
+          post({ type: 'onsets', channelIndex: ch, timestamps, strengths, bandTimestamps, bandStrengths }, transfer)
 
-      const transfer = [timestamps.buffer, strengths.buffer, ...bandTimestamps.map(a => a.buffer), ...bandStrengths.map(a => a.buffer)]
-      post({ type: 'onsets', channelIndex: ch, timestamps, strengths, bandTimestamps, bandStrengths }, transfer)
+          const overviewRawDb = new Uint8Array(ovUsed * numFreqBins)
+          for (let x = 0; x < ovUsed; x++) {
+            const cnt = a.ovCount[x] || 1
+            for (let k = 0; k < numFreqBins; k++) {
+              overviewRawDb[(numFreqBins - 1 - k) * ovUsed + x] = Math.round(a.ovAccum[x * numFreqBins + k]! / cnt)
+            }
+          }
+          post({ type: 'spectrogramOverview', channelIndex: ch, tile: { tileIndex: -1, rawDb: overviewRawDb, width: ovUsed, height: numFreqBins, timeStart: 0, timeEnd: contentEndSec, maxFreqHz: tileMaxFreqHz } }, [overviewRawDb.buffer])
+        }
+        // VAD is produced by the Silero plugin (sileroVad.ts); the spectrogram no longer emits an
+        // energy-VAD fallback.
+        // Container over-report leaves doneRef below totalFrames; force the bar to clear.
+        post({ type: 'progress', done: totalProgress, total: totalProgress })
+      },
     }
-
-    const segments = await runVadForAllChannels(channels, sampleRate, frameRMSCache, hop)
-    if (segments.length > 0) post({ type: 'vad', segments })
   },
 }

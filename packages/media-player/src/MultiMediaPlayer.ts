@@ -1,6 +1,6 @@
 import type { SpectrogramTile, WaveformBins } from '@mumo/timeline'
-import type { SpectrogramSettings, MediaState, VadSegment } from './types.js'
-import { DEFAULT_SPEC_SETTINGS } from './types.js'
+import type { SpectrogramSettings, MediaState, VadSegment, VadSettings, PitchTrack, PitchSettings } from './types.js'
+import { DEFAULT_VAD_SETTINGS, DEFAULT_SPEC_SETTINGS, DEFAULT_PITCH_SETTINGS } from './types.js'
 import type { PlatformIO } from './platform.js'
 import { MediaPlayer } from './MediaPlayer.js'
 import type { MediaPlayerCallbacks } from './MediaPlayer.js'
@@ -17,6 +17,9 @@ export interface MultiMediaPlayerCallbacks {
   onSpectrogramTile(playerId: string, channelIndex: number, tile: SpectrogramTile): void
   onOnsets(playerId: string, channelIndex: number, timestamps: Float32Array, strengths: Float32Array, bandTimestamps: Float32Array[], bandStrengths: Float32Array[]): void
   onVad(segments: VadSegment[]): void
+  onVadProgress(done: number, total: number): void
+  onPitch(playerId: string, channelIndex: number, track: PitchTrack): void
+  onPitchProgress(done: number, total: number): void
   onProgress(done: number, total: number): void
   onError(message: string): void
   onCustom(pluginId: string, data: unknown): void
@@ -27,6 +30,8 @@ export interface MultiMediaPlayerCallbacks {
 export class MultiMediaPlayer {
   private _players: MediaPlayer[] = []
   private _settings: SpectrogramSettings = { ...DEFAULT_SPEC_SETTINGS }
+  private _vadSettings: VadSettings = { ...DEFAULT_VAD_SETTINGS }
+  private _pitchSettings: PitchSettings = { ...DEFAULT_PITCH_SETTINGS }
   private readonly _playersListeners = new Set<(players: readonly MediaPlayer[]) => void>()
   private _lastPrimaryId: string | null = null
 
@@ -345,6 +350,29 @@ export class MultiMediaPlayer {
     for (const p of this._players) p.reanalyze(settings)
   }
 
+  /** Apply VAD segmentation settings to all players — re-segments cached probs instantly. */
+  setVadSettings(settings: VadSettings): void {
+    this._vadSettings = settings
+    for (const p of this._players) p.resegmentVad(settings)
+  }
+
+  /** Remember pitch settings on all players for the next compute — does NOT re-run detection. */
+  setPitchSettings(settings: PitchSettings): void {
+    this._pitchSettings = settings
+    for (const p of this._players) p.setPitchSettings(settings)
+  }
+
+  /** Compute pitch now for all players (re-decode, pitch-only). Used lazily when the overlay is
+   *  turned on or when detection settings change while it's shown. */
+  computePitch(): void {
+    for (const p of this._players) p.reanalyzePitch(this._pitchSettings)
+  }
+
+  /** Compute VAD now for all players (deferred re-decode, VAD-only). */
+  computeVad(): void {
+    for (const p of this._players) p.computeVad()
+  }
+
   dispose(): void {
     cancelAnimationFrame(this._rafId)
     for (const p of this._players) p.dispose()
@@ -437,12 +465,17 @@ export class MultiMediaPlayer {
       onSpectrogramTile:     (ch, tile)               => this._callbacks.onSpectrogramTile?.(player.id, ch, tile),
       onOnsets:              (ch, ts, str, bts, bstr) => this._callbacks.onOnsets?.(player.id, ch, ts, str, bts, bstr),
       onVad:                 segs                     => { if (player === this._players[0]) this._callbacks.onVad?.(segs) },
+      onVadProgress:         (d, t)                   => { if (player === this._players[0]) this._callbacks.onVadProgress?.(d, t) },
+      onPitch:               (ch, track)              => this._callbacks.onPitch?.(player.id, ch, track),
+      onPitchProgress:       (d, t)                   => { if (player === this._players[0]) this._callbacks.onPitchProgress?.(d, t) },
       onProgress:            (d, t)                   => { if (player === this._players[0]) this._callbacks.onProgress?.(d, t) },
       onError:               msg                      => this._callbacks.onError?.(msg),
       onCustom:              (id, data)               => { if (player === this._players[0]) this._callbacks.onCustom?.(id, data) },
     }
     player = new MediaPlayer(cbs, this._platform, this._workerUrl)
     player._setClockFn(() => this.getPlaybackTime())
+    player.setVadSettings(this._vadSettings)
+    player.setPitchSettings(this._pitchSettings)
     return player
   }
 }

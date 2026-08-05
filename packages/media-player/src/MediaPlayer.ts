@@ -1,6 +1,6 @@
-import { Input, UrlSource, AudioBufferSink, ALL_FORMATS } from 'mediabunny'
 import type { SpectrogramTile, WaveformBins } from '@mumo/timeline'
-import type { SpectrogramSettings, MediaState, MediaTrack, VadSegment, FrameStat } from './types.js'
+import type { SpectrogramSettings, MediaState, MediaTrack, VadSegment, VadSettings, PitchTrack, PitchSettings, FrameStat } from './types.js'
+import { DEFAULT_VAD_SETTINGS, DEFAULT_PITCH_SETTINGS } from './types.js'
 import type { PlatformIO } from './platform.js'
 import { SignalBroker } from './SignalBroker.js'
 import type { SignalCallbacks } from './SignalBroker.js'
@@ -24,6 +24,9 @@ export interface MediaPlayerCallbacks {
   onSpectrogramTile(channelIndex: number, tile: SpectrogramTile): void
   onOnsets(channelIndex: number, timestamps: Float32Array, strengths: Float32Array, bandTimestamps: Float32Array[], bandStrengths: Float32Array[]): void
   onVad(segments: VadSegment[]): void
+  onVadProgress(done: number, total: number): void
+  onPitch(channelIndex: number, track: PitchTrack): void
+  onPitchProgress(done: number, total: number): void
   onProgress(done: number, total: number): void
   onError(message: string): void
   onCustom(pluginId: string, data: unknown): void
@@ -39,7 +42,8 @@ export class MediaPlayer {
   private readonly _broker: SignalBroker
   private _paused = true
   private _clockFn: () => number = () => 0
-  private _decodeId = 0  // cancels stale audio decode loops on reload
+  private _vadSettings: VadSettings = { ...DEFAULT_VAD_SETTINGS }
+  private _pitchSettings: PitchSettings = { ...DEFAULT_PITCH_SETTINGS }
 
   private readonly _stateListeners   = new Set<(s: MediaState | null) => void>()
   private readonly _playingListeners = new Set<(playing: boolean) => void>()
@@ -51,13 +55,18 @@ export class MediaPlayer {
   ) {
     const signalCallbacks: SignalCallbacks = {
       onDecoded: (sampleRate, channelCount, duration) => {
-        if (this.state) this._setState({ ...this.state, sampleRate, channelCount, duration })
+        // For video, the renderer's duration is authoritative (audio & video tracks can differ
+        // in length); only fall back to the decoded audio duration for audio-only media.
+        if (this.state) this._setState({ ...this.state, sampleRate, channelCount, duration: this.state.duration || duration })
       },
       onWaveform:             (ch, bins)               => _callbacks.onWaveform?.(ch, bins),
       onSpectrogramOverview:  (ch, tile)               => _callbacks.onSpectrogramOverview?.(ch, tile),
       onSpectrogramTile:      (ch, tile)               => _callbacks.onSpectrogramTile?.(ch, tile),
       onOnsets:               (ch, ts, str, bts, bstr) => _callbacks.onOnsets?.(ch, ts, str, bts, bstr),
       onVad:                  segs                     => _callbacks.onVad?.(segs),
+      onVadProgress:          (d, t)                   => _callbacks.onVadProgress?.(d, t),
+      onPitch:                (ch, track)              => _callbacks.onPitch?.(ch, track),
+      onPitchProgress:        (d, t)                   => _callbacks.onPitchProgress?.(d, t),
       onProgress:             (d, t)                   => _callbacks.onProgress?.(d, t),
       onError:                msg                      => _callbacks.onError?.(msg),
       onCustom:               (id, data)               => _callbacks.onCustom?.(id, data),
@@ -141,9 +150,8 @@ export class MediaPlayer {
       if (this.track?.file === file) this.track = { ...this.track, mediaHash: hash }
     })
 
-    // Start worker for this file; then stream decoded audio chunks to it
-    this._broker.startStream(settings)
-    void this._streamAudio(mediaUrl, ++this._decodeId)
+    // Decode + analyze the whole file in the worker (off the main thread).
+    this._broker.analyze(mediaUrl, settings, { __vadSettings: this._vadSettings, __pitch: this._pitchSettings })
 
     if (kind === 'audio') {
       // Audio-only files never get a visible canvas tile, so create an offscreen renderer
@@ -177,8 +185,7 @@ export class MediaPlayer {
     this.track = this.track?.mediaUrl === url ? this.track : null
     this._setState({ mediaUrl: url, kind, filename: name, duration: 0, sampleRate: 0, channelCount: 1, activeChannel: 'mix', muted: this.state?.muted ?? false, volume: this.state?.volume ?? 1 })
 
-    this._broker.startStream(settings)
-    void this._streamAudio(url, ++this._decodeId)
+    this._broker.analyze(url, settings, { __vadSettings: this._vadSettings, __pitch: this._pitchSettings })
 
     if (kind === 'audio') {
       if (!this._videoRenderer) {
@@ -200,48 +207,24 @@ export class MediaPlayer {
     }
   }
 
-  /**
-   * Decode audio from a URL on the main thread (AudioBuffer requires window context)
-   * and stream each chunk to the worker without accumulating PCM in main memory.
-   */
-  private async _streamAudio(url: string, decodeId: number): Promise<void> {
-    const name = this.state?.filename ?? url.split('/').pop() ?? 'media'
-    const source = new UrlSource(url)
-    const input = new Input({ formats: ALL_FORMATS, source })
-    try {
-      const at = await input.getPrimaryAudioTrack()
-      if (!at || decodeId !== this._decodeId) return
-      const sampleRate = await at.getSampleRate()
-      if (decodeId !== this._decodeId) return
-      console.log(`[media] audio processing start: ${name} (${sampleRate} Hz)`)
-      const sink = new AudioBufferSink(at)
-      let duration = 0, channelCount = 0
-      for await (const { buffer, timestamp } of sink.buffers(0)) {
-        if (decodeId !== this._decodeId) break
-        channelCount = buffer.numberOfChannels
-        duration = Math.max(duration, timestamp + buffer.duration)
-        // Extract and transfer each channel — zero-copy, no accumulation on main thread
-        const chunks: Float32Array[] = []
-        for (let ch = 0; ch < channelCount; ch++) {
-          chunks.push(buffer.getChannelData(ch).slice())
-        }
-        this._broker.feedChunk(chunks, sampleRate, channelCount)
-      }
-      if (decodeId === this._decodeId) {
-        console.log(`[media] audio processing done: ${name} (${duration.toFixed(2)}s, ${channelCount}ch)`)
-        this._broker.endStream(duration)
-      }
-    } catch (err) {
-      if (decodeId === this._decodeId) {
-        console.error(`[media] audio processing error: ${name}`, err)
-        this._callbacks.onError?.(`Failed to decode audio: ${String(err)}`)
-      }
-    } finally {
-      input.dispose()
-    }
-  }
-
   reanalyze(settings: SpectrogramSettings): void { this._broker.reanalyze(settings) }
+
+  /** Remember the current VAD settings so the next analyze segments with them. */
+  setVadSettings(settings: VadSettings): void { this._vadSettings = { ...settings } }
+
+  /** Apply new VAD settings now: re-segment the worker's cached probs (instant, no re-decode). */
+  resegmentVad(settings: VadSettings): void { this._vadSettings = { ...settings }; this._broker.resegmentVad(this._vadSettings) }
+
+  /** Compute VAD now as a deferred pass (re-decode, VAD-only). Used lazily when VAD is enabled. */
+  computeVad(): void { this._broker.analyzeVad(this._vadSettings) }
+
+  // Copy to a plain object: callers may pass a framework reactive proxy (e.g. Svelte $state), which
+  // is not structured-cloneable and would break postMessage to the worker.
+  /** Remember the current pitch settings so the next analyze uses them. */
+  setPitchSettings(settings: PitchSettings): void { this._pitchSettings = { ...settings } }
+
+  /** Re-run pitch detection with new settings (re-decodes; backend/frequency/threshold changes). */
+  reanalyzePitch(settings: PitchSettings): void { this._pitchSettings = { ...settings }; this._broker.reanalyzePitch(this._pitchSettings) }
 
   captureFrame(): Promise<Blob | null> {
     return this._videoRenderer?.captureFrame() ?? Promise.resolve(null)
