@@ -705,6 +705,7 @@
   }
 
   function _syncPitchOverlay() {
+    _intonationCache.clear()  // pitch filter/detect changed → intonation contours must rebuild
     mediaSignals = mediaSignals.map(s => {
       if (s.kind !== 'waveform') return s
       const track = pitchChannels.has(s.id) ? pitchTracks.get(s.id) : undefined
@@ -716,6 +717,51 @@
       return rest
     })
     _flushSignals()
+  }
+
+  // Intonation contour data for a transcript block: the f0 samples of `channel` over [t0, t1] plus
+  // the channel's robust y-scale. Reuses the pitch-overlay build; cached by channel-key + track
+  // identity (a new track object on recompute invalidates automatically; cleared on filter change).
+  type IntonationOverlay = { samples: Array<[number, number]>; yMin: number; yMax: number }
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- imperative cache; keyed by track identity, cleared in _syncPitchOverlay
+  const _intonationCache = new Map<string, { track: object; overlay: IntonationOverlay | null }>()
+  // Audio channels available for intonation, derived from the waveform signals (id `…:waveform:chN`).
+  function getAudioChannels(): Array<{ index: number; label: string }> {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local dedup map, not reactive state
+    const seen = new Map<number, string>()
+    for (const s of mediaSignals) {
+      if (s.kind !== 'waveform') continue
+      const m = /:waveform:ch(\d+)$/.exec(s.id)
+      if (!m) continue
+      const idx = parseInt(m[1]!, 10)
+      if (!seen.has(idx)) seen.set(idx, s.label || `Ch ${idx}`)
+    }
+    return [...seen.entries()].map(([index, label]) => ({ index, label })).sort((a, b) => a.index - b.index)
+  }
+
+  // A participant's default audio channel (set in the participants dialog), or null if unset.
+  function getParticipantChannel(participant: string): number | null {
+    const p = participants.find(pp => pp.label === participant)
+    return p?.channel ?? null
+  }
+
+  function getIntonation(channel: number, t0: number, t1: number): IntonationOverlay | null {
+    let key: string | undefined
+    let track: { times: Float32Array; f0: Float32Array; confidence: Float32Array } | undefined
+    for (const [k, tr] of pitchTracks) {
+      if (k.endsWith(`:waveform:ch${channel}`)) { key = k; track = tr; break }
+    }
+    if (!key || !track) return null
+    let entry = _intonationCache.get(key)
+    if (!entry || entry.track !== track) {
+      entry = { track, overlay: _buildPitchOverlay(track) }
+      _intonationCache.set(key, entry)
+    }
+    const ov = entry.overlay
+    if (!ov) return null
+    const samples = ov.samples.filter(([t]) => t >= t0 && t <= t1)
+    if (samples.length === 0) return null
+    return { samples, yMin: ov.yMin, yMax: ov.yMax }
   }
 
   // Pitch is computed lazily: only when the overlay is on and it isn't already computed/running,
@@ -1255,6 +1301,50 @@
     return () => document.removeEventListener('mumo:menu-action', handleMenuAction)
   })
 
+  // Make modal dialogs draggable by their title/header bar. One delegated handler
+  // covers every registered dialog type via a (handle → panel) selector pair. Since the
+  // dialogs are conditionally rendered ({#if …open}), each reopen remounts a fresh
+  // element with no inline styles, so the position resets on its own.
+  onMount(() => {
+    // handle = the grabbable title bar; panel = the element that actually moves.
+    const DRAG_TARGETS: { handle: string; panel: string }[] = [
+      { handle: '.dlg-header, .dlg > h3', panel: '.dlg' },        // standard .dlg dialogs
+      { handle: '.lmd-header',            panel: '.lmd-panel' },  // linked-media dialog
+    ]
+    function onDlgMouseDown(e: MouseEvent) {
+      if (e.button !== 0) return
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      // Grab only the title bar; ignore interactive controls living in the header.
+      if (target.closest('button, input, select, textarea, a')) return
+      let panel: HTMLElement | null = null
+      for (const { handle, panel: panelSel } of DRAG_TARGETS) {
+        if (target.closest(handle)) { panel = target.closest(panelSel) as HTMLElement | null; break }
+      }
+      if (!panel) return
+      e.preventDefault()
+      const rect = panel.getBoundingClientRect()
+      const startX = e.clientX, startY = e.clientY
+      const origX = rect.left, origY = rect.top
+      panel.style.left = `${origX}px`
+      panel.style.top = `${origY}px`
+      panel.style.transform = 'none'
+      panel.style.margin = '0'
+      const onMove = (ev: MouseEvent) => {
+        panel.style.left = `${origX + (ev.clientX - startX)}px`
+        panel.style.top = `${origY + (ev.clientY - startY)}px`
+      }
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousedown', onDlgMouseDown)
+    return () => document.removeEventListener('mousedown', onDlgMouseDown)
+  })
+
   // Library imperative API
 
   /** Replace the current document (library API). */
@@ -1336,6 +1426,23 @@
   let vadSettings = $state<VadSettings>({ ...DEFAULT_VAD_SETTINGS })
   let spectrogramProgress = $state<{ done: number; total: number } | null>(null)
   let specModalOpen = $state(false)
+  let specModalTab = $state<'spectrogram' | 'vad' | 'pitch'>('spectrogram')
+  // Drag position for the Audio-processing modal; null = default anchored spot (reset on each open).
+  let specModalPos = $state<{ x: number; y: number } | null>(null)
+  function startSpecDrag(e: MouseEvent) {
+    if ((e.target as HTMLElement).closest('.spec-modal-close')) return  // let the close button work
+    e.preventDefault()
+    const modalEl = (e.currentTarget as HTMLElement).closest('.spec-modal') as HTMLElement | null
+    if (!modalEl) return
+    const rect = modalEl.getBoundingClientRect()
+    const startX = e.clientX, startY = e.clientY
+    const origX = rect.left, origY = rect.top
+    specModalPos = { x: origX, y: origY }
+    const onMove = (ev: MouseEvent) => { specModalPos = { x: origX + (ev.clientX - startX), y: origY + (ev.clientY - startY) } }
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
   let hiddenLaneIds    = $state<Set<string>>(new Set())
   let linkedMediaOpen  = $state(false)
   let linkedPlayers    = $state<readonly MediaPlayer[]>([])
@@ -4679,9 +4786,11 @@ function ctxEditUttTier() {
     {participants}
     {tiers}
     inUseLabels={participantInUse}
+    audioChannels={getAudioChannels()}
     onadd={handleParticipantAdd}
     onupdate={handleParticipantUpdate}
     onremove={handleParticipantRemove}
+    onchannelchange={(id, channel) => store.setParticipantChannel(id, channel)}
     oncopystructure={handleCopyStructure}
     onclose={() => participantsDlgOpen = false}
   />
@@ -5506,6 +5615,9 @@ function ctxEditUttTier() {
           showEnd={showEndTime}
           editable={editorMode === 'edit'}
           getTokenTime={(id) => { const t = store.getTokenTime(id); return (t?.start != null && t?.end != null) ? { start: t.start, end: t.end } : undefined }}
+          {getIntonation}
+          {getAudioChannels}
+          {getParticipantChannel}
           onEscapeKey={() => setEditorMode('annotate')}
           tokenClickMode={!!slotFillMode}
           ontokenhover={handleTokenHover}
@@ -5850,23 +5962,21 @@ function ctxEditUttTier() {
 
   {#if specModalOpen}
     <button class="spec-modal-backdrop" onclick={() => specModalOpen = false} aria-label="Close"></button>
-    <div class="spec-modal" role="dialog" aria-modal="true">
-      <div class="spec-modal-header">
-        <span>Spectrogram settings</span>
+    <div class="spec-modal" role="dialog" aria-modal="true"
+      style={specModalPos ? `left:${specModalPos.x}px; top:${specModalPos.y}px; transform:none;` : ''}>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="spec-modal-header" onmousedown={startSpecDrag}>
+        <span>Audio processing</span>
         <button class="spec-modal-close" aria-label="Close" onclick={() => specModalOpen = false}>✕</button>
       </div>
-      <div class="spec-modal-body">
-        <div class="spec-modal-section-label">Presets</div>
-        {#each SPEC_PRESETS as p (p.label)}
-          {@const active = p.windowLengthSec === spectrogramSettings.windowLengthSec && p.hopSec === spectrogramSettings.hopSec && p.maxFreqHz === spectrogramSettings.maxFreqHz}
-          <button class="spec-modal-preset" class:spec-modal-preset-active={active}
-            onclick={() => applySpectrogramSettings({ ...p })}>
-            {p.label}
-          </button>
+      <div class="spec-modal-tabs" role="tablist">
+        {#each [['spectrogram', 'Spectrogram'], ['vad', 'VAD'], ['pitch', 'Pitch']] as [id, label] (id)}
+          <button type="button" role="tab" class="spec-modal-tab" class:spec-modal-tab-active={specModalTab === id}
+            aria-selected={specModalTab === id}
+            onclick={() => specModalTab = id as typeof specModalTab}>{label}</button>
         {/each}
-        <div class="spec-modal-divider"></div>
-        <div class="spec-modal-section-label">Custom</div>
-
+      </div>
+      <div class="spec-modal-body">
         {#snippet numCombo(id: string, label: string, unit: string, displayVal: string, opts: string[], onval: (v: string) => void)}
           <div class="spec-modal-row">
             <label class="spec-modal-label" for={id}>{label}{unit ? ` (${unit})` : ''}</label>
@@ -5886,129 +5996,139 @@ function ctxEditUttTier() {
           </div>
         {/snippet}
 
-        {@render numCombo('spec-window-length', 'Window', 'ms',
-          String(spectrogramSettings.windowLengthSec * 1000),
-          ['5', '10', '15', '20', '25', '50'],
-          v => { const n = parseFloat(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, windowLengthSec: n / 1000 }) }
-        )}
-        {@render numCombo('spec-time-step', 'Hop', 'ms',
-          String(spectrogramSettings.hopSec * 1000),
-          ['1', '2', '2.5', '5', '10', '20'],
-          v => { const n = parseFloat(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, hopSec: n / 1000 }) }
-        )}
-        {@render numCombo('spec-min-freq', 'Min freq', 'Hz',
-          String(spectrogramSettings.viewMinHz),
-          ['0', '50', '100', '200', '500', '1000'],
-          v => { const n = parseInt(v); if (n >= 0 && n < spectrogramSettings.maxFreqHz) applySpectrogramSettings({ ...spectrogramSettings, viewMinHz: n }) }
-        )}
-        {@render numCombo('spec-max-freq', 'Max freq', 'Hz',
-          String(spectrogramSettings.maxFreqHz),
-          ['4000', '5000', '5500', '8000', '12000', '22050'],
-          v => { const n = parseInt(v); if (n > spectrogramSettings.viewMinHz) applySpectrogramSettings({ ...spectrogramSettings, maxFreqHz: n }) }
-        )}
-        {@render numCombo('spec-dynamic-range', 'Dyn. range', 'dB',
-          String(spectrogramSettings.dynamicRangeDb),
-          ['40', '50', '60', '70', '80', '90', '100'],
-          v => { const n = parseInt(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, dynamicRangeDb: n }) }
-        )}
-        {@render numCombo('spec-gamma', 'Gamma', '',
-          String(spectrogramSettings.gamma),
-          ['1.0', '1.2', '1.5', '1.7', '2.0', '2.5'],
-          v => { const n = parseFloat(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, gamma: n }) }
-        )}
-        {@render numCombo('spec-preemph', 'Pre-emphasis', 'dB/oct',
-          String(spectrogramSettings.preEmphasisDbPerOct),
-          ['0', '6', '9', '12'],
-          v => { const n = parseFloat(v); if (n >= 0) applySpectrogramSettings({ ...spectrogramSettings, preEmphasisDbPerOct: n }) }
-        )}
+        {#if specModalTab === 'spectrogram'}
+          <div class="spec-modal-section-label">Band</div>
+          {#each SPEC_PRESETS as p (p.label)}
+            {@const active = p.windowLengthSec === spectrogramSettings.windowLengthSec && p.hopSec === spectrogramSettings.hopSec && p.maxFreqHz === spectrogramSettings.maxFreqHz}
+            <button type="button" class="spec-modal-radio-row" onclick={() => applySpectrogramSettings({ ...p })}>
+              <span class="spec-radio" class:on={active}></span>{p.label}
+            </button>
+          {/each}
+          <div class="spec-modal-divider"></div>
+          <div class="spec-modal-section-label">Custom</div>
 
-        <div class="spec-modal-row">
-          <label class="spec-modal-label" for="spec-scale">Scale</label>
-          <select id="spec-scale" class="spec-modal-sel" value={spectrogramSettings.scale}
-            onchange={(e) => applySpectrogramSettings({ ...spectrogramSettings, scale: e.currentTarget.value as 'mel' | 'linear' })}>
-            <option value="mel">Mel</option>
-            <option value="linear">Linear</option>
-          </select>
-        </div>
-        <div class="spec-modal-row">
-          <span class="spec-modal-label">Mono mix</span>
-          <button type="button" class="spec-modal-checkbtn" aria-label="Mono mix"
-            onclick={() => applySpectrogramSettings({ ...spectrogramSettings, monoMix: !spectrogramSettings.monoMix })}>
-            <span class="mb-check" class:mb-checked={spectrogramSettings.monoMix}></span>
-          </button>
-        </div>
-        {#if spectrogramSettings.scale === 'mel'}
-          {@render numCombo('spec-mel-bands', 'Mel bands', '',
-            String(spectrogramSettings.melBands),
-            ['40', '60', '80', '128'],
-            v => { const n = parseInt(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, melBands: n }) }
+          {@render numCombo('spec-window-length', 'Window', 'ms',
+            String(spectrogramSettings.windowLengthSec * 1000),
+            ['5', '10', '15', '20', '25', '50'],
+            v => { const n = parseFloat(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, windowLengthSec: n / 1000 }) }
           )}
-        {/if}
+          {@render numCombo('spec-time-step', 'Hop', 'ms',
+            String(spectrogramSettings.hopSec * 1000),
+            ['1', '2', '2.5', '5', '10', '20'],
+            v => { const n = parseFloat(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, hopSec: n / 1000 }) }
+          )}
+          {@render numCombo('spec-min-freq', 'Min freq', 'Hz',
+            String(spectrogramSettings.viewMinHz),
+            ['0', '50', '100', '200', '500', '1000'],
+            v => { const n = parseInt(v); if (n >= 0 && n < spectrogramSettings.maxFreqHz) applySpectrogramSettings({ ...spectrogramSettings, viewMinHz: n }) }
+          )}
+          {@render numCombo('spec-max-freq', 'Max freq', 'Hz',
+            String(spectrogramSettings.maxFreqHz),
+            ['4000', '5000', '5500', '8000', '12000', '22050'],
+            v => { const n = parseInt(v); if (n > spectrogramSettings.viewMinHz) applySpectrogramSettings({ ...spectrogramSettings, maxFreqHz: n }) }
+          )}
+          {@render numCombo('spec-dynamic-range', 'Dyn. range', 'dB',
+            String(spectrogramSettings.dynamicRangeDb),
+            ['40', '50', '60', '70', '80', '90', '100'],
+            v => { const n = parseInt(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, dynamicRangeDb: n }) }
+          )}
+          {@render numCombo('spec-gamma', 'Gamma', '',
+            String(spectrogramSettings.gamma),
+            ['1.0', '1.2', '1.5', '1.7', '2.0', '2.5'],
+            v => { const n = parseFloat(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, gamma: n }) }
+          )}
+          {@render numCombo('spec-preemph', 'Pre-emphasis', 'dB/oct',
+            String(spectrogramSettings.preEmphasisDbPerOct),
+            ['0', '6', '9', '12'],
+            v => { const n = parseFloat(v); if (n >= 0) applySpectrogramSettings({ ...spectrogramSettings, preEmphasisDbPerOct: n }) }
+          )}
 
-        <div class="spec-modal-divider"></div>
-        <div class="spec-modal-section-label">Analyzers</div>
-        <div class="spec-modal-row">
-          <span class="spec-modal-label">Voice activity (VAD)</span>
-          <button type="button" class="spec-modal-checkbtn" aria-label="Voice activity detection"
-            onclick={() => {
-              vadEnabled = !vadEnabled
-              if (vadEnabled) _maybeComputeVad()
-              else { vadComputed = false; vadComputing = false; vadProgress = null; mergedVadSegments = []; timelineRef?.setVadSegments([]) }
-            }}>
-            <span class="mb-check" class:mb-checked={vadEnabled}></span>
-          </button>
-        </div>
+          <div class="spec-modal-row">
+            <label class="spec-modal-label" for="spec-scale">Scale</label>
+            <select id="spec-scale" class="spec-modal-sel" value={spectrogramSettings.scale}
+              onchange={(e) => applySpectrogramSettings({ ...spectrogramSettings, scale: e.currentTarget.value as 'mel' | 'linear' })}>
+              <option value="mel">Mel</option>
+              <option value="linear">Linear</option>
+            </select>
+          </div>
+          <div class="spec-modal-row">
+            <span class="spec-modal-label">Mono mix</span>
+            <button type="button" class="spec-modal-checkbtn" aria-label="Mono mix"
+              onclick={() => applySpectrogramSettings({ ...spectrogramSettings, monoMix: !spectrogramSettings.monoMix })}>
+              <span class="mb-check" class:mb-checked={spectrogramSettings.monoMix}></span>
+            </button>
+          </div>
+          {#if spectrogramSettings.scale === 'mel'}
+            {@render numCombo('spec-mel-bands', 'Mel bands', '',
+              String(spectrogramSettings.melBands),
+              ['40', '60', '80', '128'],
+              v => { const n = parseInt(v); if (n > 0) applySpectrogramSettings({ ...spectrogramSettings, melBands: n }) }
+            )}
+          {/if}
 
-        {#if vadEnabled}
-          <div class="spec-modal-section-label">Voice activity (VAD)</div>
-          {@render numCombo('vad-threshold', 'Threshold', '',
-            String(vadSettings.positiveThreshold),
-            ['0.2', '0.25', '0.3', '0.4', '0.5', '0.6'],
-            v => { const n = parseFloat(v); if (n > 0 && n < 1) applyVadSettings({ ...vadSettings, positiveThreshold: n, negativeThreshold: Math.max(0.05, n - 0.1) }) }
-          )}
-          {@render numCombo('vad-pause', 'Split pause', 'ms',
-            String(vadSettings.redemptionMs),
-            ['100', '150', '250', '400', '700', '1400'],
-            v => { const n = parseInt(v); if (n > 0) applyVadSettings({ ...vadSettings, redemptionMs: n }) }
-          )}
-          {@render numCombo('vad-min-speech', 'Min speech', 'ms',
-            String(vadSettings.minSpeechMs),
-            ['100', '150', '250', '400', '600'],
-            v => { const n = parseInt(v); if (n > 0) applyVadSettings({ ...vadSettings, minSpeechMs: n }) }
-          )}
-        {/if}
+        {:else if specModalTab === 'vad'}
+          <div class="spec-modal-row">
+            <span class="spec-modal-label">Voice activity (VAD)</span>
+            <button type="button" class="spec-modal-checkbtn" aria-label="Voice activity detection"
+              onclick={() => {
+                vadEnabled = !vadEnabled
+                if (vadEnabled) _maybeComputeVad()
+                else { vadComputed = false; vadComputing = false; vadProgress = null; mergedVadSegments = []; timelineRef?.setVadSegments([]) }
+              }}>
+              <span class="mb-check" class:mb-checked={vadEnabled}></span>
+            </button>
+          </div>
 
-        <div class="spec-modal-divider"></div>
-        <div class="spec-modal-section-label">Pitch (over waveform)</div>
-        <div class="spec-modal-row">
-          <label class="spec-modal-label" for="pitch-backend">Algorithm</label>
-          <select id="pitch-backend" class="spec-modal-sel" value={pitchSettings.backend}
-            onchange={(e) => applyPitchDetect({ backend: e.currentTarget.value as 'yin' | 'swiftf0' })}>
-            <option value="yin">YIN (fast)</option>
-            <option value="swiftf0">SwiftF0 (robust)</option>
-          </select>
-        </div>
-        {@render numCombo('pitch-confidence', 'Confidence', '',
-          String(pitchSettings.confidenceThreshold),
-          ['0.3', '0.4', '0.5', '0.6', '0.7', '0.8'],
-          v => { const n = parseFloat(v); if (n >= 0 && n <= 1) applyPitchFilter({ confidenceThreshold: n }) }
-        )}
-        {@render numCombo('pitch-min-hz', 'Min freq', 'Hz',
-          String(pitchSettings.minHz),
-          ['50', '65', '75', '100'],
-          v => { const n = parseInt(v); if (n > 0) applyPitchFilter({ minHz: n }) }
-        )}
-        {@render numCombo('pitch-max-hz', 'Max freq', 'Hz',
-          String(pitchSettings.maxHz),
-          ['300', '400', '500', '600', '800'],
-          v => { const n = parseInt(v); if (n > 0) applyPitchFilter({ maxHz: n }) }
-        )}
-        {#if pitchSettings.backend === 'yin'}
-          {@render numCombo('pitch-threshold', 'Threshold', '',
-            String(pitchSettings.threshold),
-            ['0.1', '0.15', '0.2', '0.25'],
-            v => { const n = parseFloat(v); if (n > 0 && n < 1) applyPitchDetect({ threshold: n }) }
+          {#if vadEnabled}
+            <div class="spec-modal-divider"></div>
+            {@render numCombo('vad-threshold', 'Threshold', '',
+              String(vadSettings.positiveThreshold),
+              ['0.2', '0.25', '0.3', '0.4', '0.5', '0.6'],
+              v => { const n = parseFloat(v); if (n > 0 && n < 1) applyVadSettings({ ...vadSettings, positiveThreshold: n, negativeThreshold: Math.max(0.05, n - 0.1) }) }
+            )}
+            {@render numCombo('vad-pause', 'Split pause', 'ms',
+              String(vadSettings.redemptionMs),
+              ['100', '150', '250', '400', '700', '1400'],
+              v => { const n = parseInt(v); if (n > 0) applyVadSettings({ ...vadSettings, redemptionMs: n }) }
+            )}
+            {@render numCombo('vad-min-speech', 'Min speech', 'ms',
+              String(vadSettings.minSpeechMs),
+              ['100', '150', '250', '400', '600'],
+              v => { const n = parseInt(v); if (n > 0) applyVadSettings({ ...vadSettings, minSpeechMs: n }) }
+            )}
+          {/if}
+
+        {:else if specModalTab === 'pitch'}
+          <div class="spec-modal-row">
+            <label class="spec-modal-label" for="pitch-backend">Algorithm</label>
+            <select id="pitch-backend" class="spec-modal-sel" value={pitchSettings.backend}
+              onchange={(e) => applyPitchDetect({ backend: e.currentTarget.value as 'yin' | 'swiftf0' })}>
+              <option value="yin">YIN (fast)</option>
+              <option value="swiftf0">SwiftF0 (robust)</option>
+            </select>
+          </div>
+          {@render numCombo('pitch-confidence', 'Confidence', '',
+            String(pitchSettings.confidenceThreshold),
+            ['0.3', '0.4', '0.5', '0.6', '0.7', '0.8'],
+            v => { const n = parseFloat(v); if (n >= 0 && n <= 1) applyPitchFilter({ confidenceThreshold: n }) }
           )}
+          {@render numCombo('pitch-min-hz', 'Min freq', 'Hz',
+            String(pitchSettings.minHz),
+            ['50', '65', '75', '100'],
+            v => { const n = parseInt(v); if (n > 0) applyPitchFilter({ minHz: n }) }
+          )}
+          {@render numCombo('pitch-max-hz', 'Max freq', 'Hz',
+            String(pitchSettings.maxHz),
+            ['300', '400', '500', '600', '800'],
+            v => { const n = parseInt(v); if (n > 0) applyPitchFilter({ maxHz: n }) }
+          )}
+          {#if pitchSettings.backend === 'yin'}
+            {@render numCombo('pitch-threshold', 'Threshold', '',
+              String(pitchSettings.threshold),
+              ['0.1', '0.15', '0.2', '0.25'],
+              v => { const n = parseFloat(v); if (n > 0 && n < 1) applyPitchDetect({ threshold: n }) }
+            )}
+          {/if}
         {/if}
       </div>
     </div>
@@ -6173,8 +6293,8 @@ function ctxEditUttTier() {
     {#if mediaSignals.some(s => s.kind === 'spectrogram')}
       <div class="tl-gear-divider"></div>
       <button class="tl-gear-item tl-gear-preset-btn"
-        onclick={() => { specModalOpen = true; tlSettingsOpen = false; tlGearMenuPos = null }}>
-        Spectrogram settings…
+        onclick={() => { specModalOpen = true; specModalPos = null; tlSettingsOpen = false; tlGearMenuPos = null }}>
+        Audio processing…
       </button>
     {/if}
 
@@ -7124,9 +7244,9 @@ function ctxEditUttTier() {
   }
   .spec-modal {
     position: fixed;
-    top: 50%;
+    top: 12vh;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translateX(-50%);
     z-index: 201;
     background: var(--color-bg-0, #fff);
     border: 1px solid var(--color-border, #d0d0d0);
@@ -7142,6 +7262,8 @@ function ctxEditUttTier() {
     padding: 10px 14px;
     border-bottom: 1px solid var(--color-border, #e0e0e0);
     font-weight: 600;
+    cursor: move;
+    user-select: none;
   }
   .spec-modal-close {
     background: none;
@@ -7152,11 +7274,77 @@ function ctxEditUttTier() {
     padding: 2px 4px;
   }
   .spec-modal-close:hover { color: #333; }
+  .spec-modal-tabs {
+    display: flex;
+    background: #e8e8e8;
+    border-bottom: 1px solid #d8d8d8;
+  }
+  .spec-modal-tab {
+    flex: 1;
+    padding: 0.5rem 0.2rem;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    color: #999;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .spec-modal-tab:hover { color: #555; background: #f5f5f5; }
+  .spec-modal-tab-active {
+    color: var(--color-primary, #0077cc);
+    border-bottom-color: var(--color-primary, #0077cc);
+    background: #fff;
+    font-weight: 600;
+  }
   .spec-modal-body {
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    min-height: 300px;
+    max-height: 72vh;
+    overflow-y: auto;
+  }
+  .spec-modal-radio-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    padding: 5px 8px;
+    font: inherit;
+    font-size: 13px;
+    color: inherit;
+    cursor: pointer;
+  }
+  .spec-modal-radio-row:hover { background: var(--color-bg-2, #f5f5f5); }
+  .spec-radio {
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid #aaa;
+    border-radius: 50%;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .spec-radio.on { border-color: var(--color-primary, #0077cc); }
+  .spec-radio.on::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-primary, #0077cc);
+    transform: translate(-50%, -50%);
   }
   .spec-modal-section-label {
     font-size: 11px;
@@ -7165,24 +7353,6 @@ function ctxEditUttTier() {
     text-transform: uppercase;
     letter-spacing: 0.04em;
     margin-bottom: 2px;
-  }
-  .spec-modal-preset {
-    background: none;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    text-align: left;
-    padding: 5px 8px;
-    font: inherit;
-    font-size: 13px;
-    cursor: pointer;
-    color: inherit;
-    width: 100%;
-  }
-  .spec-modal-preset:hover { background: var(--color-bg-2, #f5f5f5); }
-  .spec-modal-preset-active {
-    font-weight: 600;
-    color: var(--color-primary, #0077cc);
-    border-color: var(--color-primary, #0077cc);
   }
   .spec-modal-divider {
     border-top: 1px solid var(--color-border, #e8e8e8);

@@ -773,6 +773,8 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
     for (const el of (((participantsEl['mm:participant'] ?? [])) as Rec[])) {
       const id    = ga(el, 'id') ?? newId()
       const label = ga(el, 'label') ?? id
+      const chStr = ga(el, 'channel')
+      const channel = chStr != null && chStr !== '' ? Number(chStr) : undefined
       const attrEls = ((el['mm:attr'] ?? [])) as Rec[]
       const attrs: Record<string, string> = {}
       for (const aEl of attrEls) {
@@ -780,7 +782,11 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
         const val  = gt(aEl)
         if (name) attrs[name] = val
       }
-      mmParticipants.push({ id, label, ...(Object.keys(attrs).length > 0 ? { attrs } : {}) })
+      mmParticipants.push({
+        id, label,
+        ...(channel != null && !Number.isNaN(channel) ? { channel } : {}),
+        ...(Object.keys(attrs).length > 0 ? { attrs } : {}),
+      })
     }
   }
 

@@ -11,26 +11,36 @@
     participants,
     inUseLabels,
     tiers,
+    audioChannels = [],
     onadd,
     onupdate,
     onremove,
+    onchannelchange,
     onclose,
     oncopystructure,
   }: {
     participants: ParticipantJSON[]
     inUseLabels: Set<string>
     tiers: TierDef[]
+    audioChannels?: Array<{ index: number; label: string }>
     onadd:    (vals: Omit<ParticipantJSON, 'id'>) => ParticipantJSON
     onupdate: (id: string, patch: Partial<Omit<ParticipantJSON, 'id'>>) => void
     onremove: (id: string) => void
+    onchannelchange?: (id: string, channel: number | null) => void
     onclose:  () => void
     oncopystructure?: (newLabel: string, source: { type: 'participant' | 'tier'; id: string }) => void
   } = $props()
 
+  // value ('' = Default) → display label, for the audio-channel column
+  const channelLabels = $derived<Record<string, string>>({
+    '': 'Default',
+    ...Object.fromEntries(audioChannels.map(c => [String(c.index), c.label])),
+  })
+
   // Data helpers
 
   function toRow(p: ParticipantJSON): Row {
-    const row: Row = { _id: p.id, label: p.label }
+    const row: Row = { _id: p.id, label: p.label, channel: p.channel != null ? String(p.channel) : '' }
     for (const [k, v] of Object.entries(p.attrs ?? {})) row[`attr_${k}`] = v
     return row
   }
@@ -80,8 +90,28 @@
       onupdate(data['_id'] as string, rowToVals(data))
     }
 
+    const channelCol: ColumnDefinition[] = audioChannels.length > 0 ? [{
+      title: 'Audio ch.',
+      field: 'channel',
+      editor: 'list',
+      editorParams: { values: channelLabels },
+      headerSort: false,
+      width: 130,
+      formatter: (cell: CellComponent) => {
+        const v = String(cell.getValue() ?? '')
+        if (v === '') return placeholderFormatter('Default')(cell)
+        return channelLabels[v] ?? v
+      },
+      cellEdited: (cell: CellComponent) => {
+        const id = (cell.getRow().getData() as Row)['_id'] as string
+        const v  = String(cell.getValue() ?? '')
+        onchannelchange?.(id, v === '' ? null : Number(v))
+      },
+    }] : []
+
     return [
       { title: 'ID', field: 'label', editor: 'input', headerSort: false, width: 80, cssClass: 'col-required', cellEdited: onCellEdited },
+      ...channelCol,
       ...attrKeys.map(k => ({ ...makeAttrCol(k), cellEdited: onCellEdited })),
       {
         title: '',
@@ -199,7 +229,7 @@
 <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
   <div class="dlg-header">
     <h3 id="dlg-title">Participants</h3>
-    <button class="icon-btn" onclick={onclose} aria-label="Close">✕</button>
+    <button class="close-btn" onclick={onclose} aria-label="Close">✕</button>
   </div>
 
   <div class="dlg-body">

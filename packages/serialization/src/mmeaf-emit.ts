@@ -708,6 +708,7 @@ export function emitMMEAF(
       'mm:participant': participants.map(p => {
         const rawLabel = typeof p.label === 'string' ? p.label : ((p.label as { label?: string } | null)?.label ?? '')
         const partObj: Record<string, unknown> = { '@_id': p.id, '@_label': rawLabel }
+        if (p.channel != null) partObj['@_channel'] = p.channel
         if (p.attrs && Object.keys(p.attrs).length > 0) {
           partObj['mm:attr'] = Object.entries(p.attrs).map(([k, v]) => ({
             '@_name': k,

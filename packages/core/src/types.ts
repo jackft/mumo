@@ -32,6 +32,8 @@ export interface ParticipantJSON {
   id: ID
   label: string
   attrs?: Record<string, string>
+  /** Default audio channel index for this speaker (e.g. intonation contour source). */
+  channel?: number
 }
 
 export interface TierDefJSON {

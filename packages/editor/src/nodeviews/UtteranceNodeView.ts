@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
 import type { Node } from 'prosemirror-model'
-import type { EditorView, NodeView } from 'prosemirror-view'
+import type { EditorView, NodeView, ViewMutationRecord } from 'prosemirror-view'
 import { TextSelection } from 'prosemirror-state'
 import { formatTime, getCurrentDecimals, registerTimeView, unregisterTimeView } from '../format.js'
 import { startTimeEdit } from '../time-edit.js'
@@ -8,6 +8,9 @@ import { startFieldEdit } from '../field-editor.js'
 import { registerGlossView, unregisterGlossView, getGlossEntryFor, isGlossesVisible } from '../gloss.js'
 import type { GlossEntry } from '../gloss.js'
 import { registerUttTierView, unregisterUttTierView, isUttTiersVisible } from '../utt-tier.js'
+import { ProsodyLayer } from './ProsodyLayer.js'
+import type { GetIntonation, GetTokenTime } from './ProsodyLayer.js'
+import type { TokenStore } from '@mumo/core'
 
 // Module-level singleton so at most one context menu is open at a time.
 let _activeContextMenu: HTMLElement | null = null
@@ -31,6 +34,12 @@ export class UtteranceNodeView implements NodeView {
   getPos: () => number | undefined
 
   private onSeek: ((t: number) => void) | undefined
+  private tokenStore: TokenStore | undefined
+  private getTokenTime: GetTokenTime | undefined
+  private getIntonation: GetIntonation | undefined
+  private getAudioChannels: (() => Array<{ index: number; label: string }>) | undefined
+  private getParticipantChannel: ((participant: string) => number | null) | undefined
+  private _prosody: ProsodyLayer | null = null
 
   _decimals: number
   _editingWhichTime: 'start' | 'end' | null = null
@@ -42,11 +51,26 @@ export class UtteranceNodeView implements NodeView {
   private _glossEditing = false
   private _glossOriginalText = ''
 
-  constructor(node: Node, view: EditorView, getPos: () => number | undefined, onSeek?: ((t: number) => void)  ) {
+  constructor(
+    node: Node,
+    view: EditorView,
+    getPos: () => number | undefined,
+    onSeek?: ((t: number) => void),
+    tokenStore?: TokenStore,
+    getTokenTime?: GetTokenTime,
+    getIntonation?: GetIntonation,
+    getAudioChannels?: () => Array<{ index: number; label: string }>,
+    getParticipantChannel?: (participant: string) => number | null,
+  ) {
     this.node = node
     this.view = view
     this.getPos = getPos
     this.onSeek = onSeek
+    this.tokenStore = tokenStore
+    this.getTokenTime = getTokenTime
+    this.getIntonation = getIntonation
+    this.getAudioChannels = getAudioChannels
+    this.getParticipantChannel = getParticipantChannel
     this._decimals = getCurrentDecimals()
     registerTimeView(this)
 
@@ -160,6 +184,35 @@ export class UtteranceNodeView implements NodeView {
         e.preventDefault()
         this._cancelGlossEdit()
       }
+    })
+
+    this._syncProsody()
+  }
+
+  // Intonation contour (prosody layer)
+
+  /** Create/destroy the contour layer to match the node's `intonation` attr, then redraw. */
+  private _syncProsody(): void {
+    const on = this.node.attrs.intonation === true
+    if (on && !this._prosody) {
+      this._prosody = new ProsodyLayer(
+        this.dom, this.contentDOM, this.view, this.getPos,
+        () => this.node, this.tokenStore, this.getTokenTime, this.getIntonation,
+        this.getParticipantChannel,
+      )
+    } else if (!on && this._prosody) {
+      this._prosody.destroy()
+      this._prosody = null
+    }
+    if (this._prosody) this._scheduleProsodyDraw()
+  }
+
+  private _prosodyRaf = 0
+  private _scheduleProsodyDraw(): void {
+    if (this._prosodyRaf) cancelAnimationFrame(this._prosodyRaf)
+    this._prosodyRaf = requestAnimationFrame(() => {
+      this._prosodyRaf = 0
+      this._prosody?.draw()
     })
   }
 
@@ -372,6 +425,80 @@ export class UtteranceNodeView implements NodeView {
     })
     menu.appendChild(newBtn)
 
+    const sep2 = document.createElement('div')
+    sep2.className = 'utt-ctx-sep'
+    menu.appendChild(sep2)
+
+    const intonOn = this.node.attrs.intonation === true
+    const intonBtn = document.createElement('button')
+    intonBtn.className = 'utt-ctx-item utt-ctx-check'
+    intonBtn.innerHTML = `<span class="utt-ctx-box${intonOn ? ' on' : ''}"></span>Intonation`
+    intonBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      _closeActiveContextMenu()
+      this._setIntonation(!intonOn)
+    })
+    menu.appendChild(intonBtn)
+
+    // Intonation channel picker, as a hover submenu (only when there's a choice of channels).
+    const channels = this.getAudioChannels?.() ?? []
+    if (channels.length > 1) {
+      const override = this.node.attrs.intonationChannel as number | null  // null = use participant default
+
+      const chItem = document.createElement('button')
+      chItem.className = 'utt-ctx-item utt-ctx-submenu-parent'
+      chItem.innerHTML = `Channel<span class="utt-ctx-arrow">›</span>`
+
+      const submenu = document.createElement('div')
+      submenu.className = 'utt-ctx-menu utt-ctx-submenu'
+      submenu.style.cssText = 'position:fixed;z-index:10000;display:none'
+
+      // Options: "Participant default" (clears the override) + one per channel.
+      const participant = (this.node.attrs.participant as string | null) ?? ''
+      const defCh = this.getParticipantChannel?.(participant) ?? null
+      const defLabel = defCh != null
+        ? (channels.find(c => c.index === defCh)?.label ?? `Ch ${defCh}`)
+        : 'none set'
+      const options: Array<{ value: number | null; label: string }> = [
+        { value: null, label: `Participant default (${defLabel})` },
+        ...channels.map(c => ({ value: c.index, label: c.label })),
+      ]
+      for (const { value, label } of options) {
+        const chBtn = document.createElement('button')
+        chBtn.className = 'utt-ctx-item utt-ctx-check'
+        const checked = value === override
+        chBtn.innerHTML = `<span class="utt-ctx-radio${checked ? ' on' : ''}"></span>${label}`
+        chBtn.addEventListener('mousedown', (e) => {
+          e.preventDefault()
+          _closeActiveContextMenu()
+          this._setIntonationChannel(value)
+        })
+        submenu.appendChild(chBtn)
+      }
+
+      let hideT = 0
+      const showSub = () => {
+        clearTimeout(hideT)
+        const r = chItem.getBoundingClientRect()
+        submenu.style.display = ''
+        submenu.style.left = `${r.right - 2}px`
+        submenu.style.top = `${r.top}px`
+        requestAnimationFrame(() => {
+          const sr = submenu.getBoundingClientRect()
+          if (sr.right > window.innerWidth)  submenu.style.left = `${r.left - sr.width + 2}px`
+          if (sr.bottom > window.innerHeight) submenu.style.top  = `${Math.max(0, window.innerHeight - sr.height)}px`
+        })
+      }
+      const hideSub = () => { hideT = window.setTimeout(() => { submenu.style.display = 'none' }, 140) }
+      chItem.addEventListener('mouseenter', showSub)
+      chItem.addEventListener('mouseleave', hideSub)
+      submenu.addEventListener('mouseenter', () => { clearTimeout(hideT) })
+      submenu.addEventListener('mouseleave', hideSub)
+
+      menu.appendChild(chItem)
+      menu.appendChild(submenu)  // child of menu so the outside-click guard treats it as inside
+    }
+
     document.body.appendChild(menu)
     _activeContextMenu = menu
 
@@ -389,6 +516,20 @@ export class UtteranceNodeView implements NodeView {
       }
     }
     document.addEventListener('mousedown', onMousedown, true)
+  }
+
+  private _setIntonation(on: boolean): void {
+    const pos = this.getPos()
+    if (pos === undefined) return
+    this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, undefined, { ...this.node.attrs, intonation: on }))
+  }
+
+  /** Pick the audio channel for this block's contour (null = participant default). Also turns it on. */
+  private _setIntonationChannel(index: number | null): void {
+    const pos = this.getPos()
+    if (pos === undefined) return
+    this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, undefined,
+      { ...this.node.attrs, intonation: true, intonationChannel: index }))
   }
 
   private _moveToParticipant(newParticipant: string): void {
@@ -425,7 +566,8 @@ export class UtteranceNodeView implements NodeView {
     )
   }
 
-  ignoreMutation(): boolean {
+  ignoreMutation(mutation: ViewMutationRecord): boolean {
+    if (this._prosody?.contains(mutation.target)) return true
     return (
       this._participantEditing ||
       this.tierEl.contentEditable === 'true' ||
@@ -446,6 +588,9 @@ export class UtteranceNodeView implements NodeView {
     unregisterTimeView(this)
     unregisterGlossView(this.node.attrs.id as string, this)
     unregisterUttTierView(this.node.attrs.id as string, this)
+    if (this._prosodyRaf) cancelAnimationFrame(this._prosodyRaf)
+    this._prosody?.destroy()
+    this._prosody = null
     if (_activeContextMenu) _closeActiveContextMenu()
   }
 
@@ -478,6 +623,7 @@ export class UtteranceNodeView implements NodeView {
     } else {
       this.dom.removeAttribute('data-continuation')
     }
+    this._syncProsody()
     return true
   }
 

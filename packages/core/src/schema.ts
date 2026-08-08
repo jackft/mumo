@@ -14,6 +14,8 @@ const utteranceNode: NodeSpec = {
     startTimeSeconds: { default: null },
     endTimeSeconds: { default: null },
     continuationOfId: { default: null },
+    intonation: { default: false },        // show a pitch contour above the words
+    intonationChannel: { default: null },  // per-block audio channel override (number | null)
   },
   toDOM(node) {
     return ['p', {
@@ -23,18 +25,23 @@ const utteranceNode: NodeSpec = {
       ...(node.attrs.tierId ? { 'data-tier-id': node.attrs.tierId } : {}),
       'data-participant': node.attrs.participant,
       ...(node.attrs.continuationOfId ? { 'data-continuation-of': node.attrs.continuationOfId } : {}),
+      ...(node.attrs.intonation ? { 'data-intonation': 'true' } : {}),
+      ...(node.attrs.intonationChannel != null ? { 'data-intonation-channel': String(node.attrs.intonationChannel) } : {}),
     }, 0]
   },
   parseDOM: [{
     tag: 'p.utt',
     getAttrs(dom) {
       const el = dom
+      const chAttr = el.getAttribute('data-intonation-channel')
       return {
         id: el.getAttribute('data-id'),
         tier: el.getAttribute('data-tier') ?? '',
         tierId: el.getAttribute('data-tier-id') ?? null,
         participant: el.getAttribute('data-participant') ?? '',
         continuationOfId: el.getAttribute('data-continuation-of') ?? null,
+        intonation: el.getAttribute('data-intonation') === 'true',
+        intonationChannel: chAttr != null ? Number(chAttr) : null,
       }
     },
   }],

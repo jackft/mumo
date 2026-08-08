@@ -1178,6 +1178,16 @@ export class AnnotationStore extends TypedEmitter<StoreEvents> {
     this.ydoc.transact(() => { this.yParticipants.delete(id) }, USER_ORIGIN)
   }
 
+  /** Set (or clear, with null) a participant's default audio channel. */
+  setParticipantChannel(id: ID, channel: number | null): void {
+    const p = this.yParticipants.get(id)
+    if (!p) return
+    const next = { ...p }
+    if (channel == null) delete next.channel
+    else next.channel = channel
+    this.ydoc.transact(() => { this.yParticipants.set(id, next) }, USER_ORIGIN)
+  }
+
   getParticipant(id: ID): ParticipantJSON | undefined {
     return this.yParticipants.get(id)
   }

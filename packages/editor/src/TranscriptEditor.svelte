@@ -43,6 +43,7 @@
   import { buildAnchorPlugin, buildAnchorAlignmentPlugin } from './plugins/anchor.js'
   import { buildImageInputRulePlugin } from './plugins/image-command.js'
   import { buildSpectInputRulePlugin } from './commands/viz-commands.js'
+  import type { GetIntonation } from './nodeviews/ProsodyLayer.js'
   import { buildSymbolInputRulePlugin } from './plugins/symbol-input.js'
   import type { SymbolDef } from '@mumo/core'
   import type { VizContextMenuCallback } from './nodeviews/VisualizationNodeView.js'
@@ -65,6 +66,9 @@
     showEnd?: boolean
     onEscapeKey?: () => void
     getTokenTime?: (id: string) => { start: number; end: number } | undefined
+    getIntonation?: GetIntonation
+    getAudioChannels?: () => Array<{ index: number; label: string }>
+    getParticipantChannel?: (participant: string) => number | null
     editable?: boolean
     tokenClickMode?: boolean
     ontokenclick?: (token: TokenRecord) => void
@@ -106,6 +110,9 @@
     showEnd = false,
     onEscapeKey,
     getTokenTime,
+    getIntonation,
+    getAudioChannels,
+    getParticipantChannel,
     editable = true,
     tokenClickMode = false,
     ontokenclick,
@@ -473,7 +480,7 @@
       },
       nodeViews: {
         utterance: (node, editorView, getPos) =>
-          new UtteranceNodeView(node, editorView, getPos, onSeek),
+          new UtteranceNodeView(node, editorView, getPos, onSeek, tokenStore, getTokenTime, getIntonation, getAudioChannels, getParticipantChannel),
         visualization: (node, editorView, getPos) =>
           new VisualizationNodeView(node, editorView, getPos, onSeek, onVizContextMenu),
         image: (node, editorView, getPos) =>
@@ -1380,6 +1387,76 @@
     color: var(--color-primary, #4a90d9);
   }
 
+  :global(.utt-ctx-check) {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  /* Checkbox indicator (boolean toggle, e.g. Intonation) */
+  :global(.utt-ctx-box) {
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid #aaa;
+    border-radius: 3px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    position: relative;
+  }
+  :global(.utt-ctx-box.on) {
+    background: var(--color-primary, #4a90d9);
+    border-color: var(--color-primary, #4a90d9);
+  }
+  :global(.utt-ctx-box.on::after) {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0.5px;
+    width: 4px;
+    height: 7px;
+    border: solid #fff;
+    border-width: 0 1.5px 1.5px 0;
+    box-sizing: border-box;
+    transform: rotate(45deg);
+  }
+  /* Radio indicator (single choice, e.g. intonation channel) */
+  :global(.utt-ctx-radio) {
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid #aaa;
+    border-radius: 50%;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    position: relative;
+  }
+  :global(.utt-ctx-radio.on) {
+    border-color: var(--color-primary, #4a90d9);
+  }
+  :global(.utt-ctx-radio.on::after) {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-primary, #4a90d9);
+    transform: translate(-50%, -50%);
+  }
+
+  :global(.utt-ctx-submenu-parent) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  :global(.utt-ctx-arrow) {
+    color: var(--color-text-muted, #888);
+    font-size: 1rem;
+    line-height: 1;
+    margin-left: auto;
+  }
+
   :global(.utt-tier) {
     flex-shrink: 0;
     width: var(--tier-col-w, 0rem);
@@ -1413,6 +1490,36 @@
   :global(.utt-content) {
     flex: 1;
     font-family: var(--transcript-font, 'CMU Serif', 'Computer Modern', Georgia, serif);
+  }
+
+  /* Intonation contour: extra leading above each text line makes room for the band. */
+  :global(.utt--intonation .utt-content) {
+    line-height: 3.1;
+  }
+  /* Reserve room above the FIRST line so its band doesn't bleed into the block above.
+     24px = BAND_H (22) + BAND_GAP (2) in ProsodyLayer.ts. */
+  :global(.utt--intonation) {
+    padding-top: 24px;
+  }
+  :global(.utt-intonation-overlay) {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 1;
+  }
+  :global(.utt-intonation-svg) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: visible;
+  }
+  :global(.utt-intonation-path) {
+    fill: none;
+    stroke: #2979ff;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    stroke-linecap: round;
   }
 
   /* --utt-meta-w is defined on .transcript-editor using --ln-w */

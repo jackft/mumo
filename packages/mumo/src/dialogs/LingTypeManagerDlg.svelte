@@ -157,7 +157,7 @@
 <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
   <div class="dlg-header">
     <h3 id="dlg-title">Linguistic Types</h3>
-    <button class="icon-btn" onclick={onclose} aria-label="Close">✕</button>
+    <button class="close-btn" onclick={onclose} aria-label="Close">✕</button>
   </div>
 
   <div class="dlg-body">

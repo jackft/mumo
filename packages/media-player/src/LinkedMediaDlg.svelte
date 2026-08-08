@@ -77,6 +77,7 @@
   .lmd-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 10px 14px; border-bottom: 1px solid #eee; font-weight: 600;
+    cursor: move; user-select: none;
   }
   .lmd-close {
     background: none; border: none; cursor: pointer; opacity: 0.45; font-size: 14px; color: #222;

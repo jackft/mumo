@@ -22,6 +22,10 @@
 
 .dlg h3 { font-size: 1rem; font-weight: 600; margin: 0; }
 
+/* ── Drag handles (title bar / header) — see App.svelte delegated drag ─ */
+.dlg-header,
+.dlg > h3 { cursor: move; user-select: none; }
+
 /* ── Header row (title + optional close button) ────────────────────── */
 .dlg-header {
   display: flex;
