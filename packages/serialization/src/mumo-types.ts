@@ -16,6 +16,8 @@ export interface MumoManifest {
   trackSets?: string
   /** Per-track binary detection buffer entries (raw Float32Array bytes). */
   trackBuffers?: MumoTrackBufferEntry[]
+  /** Per-channel pitch (f0) tracks (raw Float32Array bytes). Omitted when there are none. */
+  pitch?: MumoPitchEntry[]
 }
 
 export interface MumoImageEntry {
@@ -36,6 +38,24 @@ export interface MumoTrackBufferEntry {
   path: string
   trackSetId: string
   trackId: string
+}
+
+/**
+ * A per-channel pitch track. The sidecar file holds the three equal-length arrays concatenated as
+ * little-endian Float32 — `[times(numFrames), f0(numFrames), confidence(numFrames)]` — so the file
+ * is `3 * numFrames * 4` bytes. Matched back to media on load by `mediaKey` (the media file path,
+ * else its filename) + `channelIndex` — NOT the per-session player id, and NOT a content hash
+ * (which isn't reliably available: desktop reload streams from a path with an empty File object).
+ */
+export interface MumoPitchEntry {
+  path: string          // archive path, e.g. "pitch/0.f32"
+  mediaKey: string      // media file path (or filename) this channel belongs to
+  channelIndex: number
+  numFrames: number
+  /** PitchSettings used to compute this channel (backend, minHz, maxHz, threshold, confidenceThreshold). */
+  settings: Record<string, unknown>
+  /** Whether the pitch overlay was toggled on for this channel's waveform lane (restored on load). */
+  enabled?: boolean
 }
 
 /** A computer-vision artifact stored in the archive. */

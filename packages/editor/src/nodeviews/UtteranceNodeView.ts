@@ -8,6 +8,7 @@ import { startFieldEdit } from '../field-editor.js'
 import { registerGlossView, unregisterGlossView, getGlossEntryFor, isGlossesVisible } from '../gloss.js'
 import type { GlossEntry } from '../gloss.js'
 import { registerUttTierView, unregisterUttTierView, isUttTiersVisible } from '../utt-tier.js'
+import { registerProsodyView, unregisterProsodyView } from '../prosody.js'
 import { ProsodyLayer } from './ProsodyLayer.js'
 import type { GetIntonation, GetTokenTime } from './ProsodyLayer.js'
 import type { TokenStore } from '@mumo/core'
@@ -187,9 +188,15 @@ export class UtteranceNodeView implements NodeView {
     })
 
     this._syncProsody()
+    registerProsodyView(this)
   }
 
   // Intonation contour (prosody layer)
+
+  /** Host hook (see prosody.ts): redraw the contour when the underlying pitch data changed. */
+  redrawProsody(): void {
+    if (this._prosody) this._scheduleProsodyDraw()
+  }
 
   /** Create/destroy the contour layer to match the node's `intonation` attr, then redraw. */
   private _syncProsody(): void {
@@ -588,6 +595,7 @@ export class UtteranceNodeView implements NodeView {
     unregisterTimeView(this)
     unregisterGlossView(this.node.attrs.id as string, this)
     unregisterUttTierView(this.node.attrs.id as string, this)
+    unregisterProsodyView(this)
     if (this._prosodyRaf) cancelAnimationFrame(this._prosodyRaf)
     this._prosody?.destroy()
     this._prosody = null

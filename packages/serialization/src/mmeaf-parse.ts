@@ -16,6 +16,7 @@ import type { PatternSchemaJSON, PatternJSON, AnnotationJSON, AnchorJSON, TokenR
 import { parseEAF } from './eaf-parse.js'
 import type { ParseResult } from './eaf-parse.js'
 import type { PMNodeJSON } from './types.js'
+import type { PitchConfigMeta, PitchSettingsMeta } from './mmeaf-emit.js'
 
 // XMLParser for mm: namespace data
 
@@ -34,6 +35,7 @@ const MM_ARRAY_TAGS = new Set([
   'mm:annotation',
   'mm:bookmark',
   'mm:id', 'mm:vocab_id',
+  'mm:pitch_channel',
 ])
 
 const mmXmlParser = new XMLParser({
@@ -227,6 +229,18 @@ export interface MMEAFParseResult extends ParseResult {
   transcriptFont: string
   suggestions: Suggestion[]
   bookmarks: import('@mumo/core').Bookmark[]
+  /** Pitch-generation metadata from <mm:pitch_config>, if present. */
+  pitchConfig?: PitchConfigMeta
+}
+
+function parsePitchSettings(el: Rec): PitchSettingsMeta {
+  return {
+    backend: ga(el, 'backend') ?? 'swiftf0',
+    minHz: Number(ga(el, 'min_hz') ?? '50'),
+    maxHz: Number(ga(el, 'max_hz') ?? '600'),
+    threshold: Number(ga(el, 'threshold') ?? '0.15'),
+    confidenceThreshold: Number(ga(el, 'confidence_threshold') ?? '0.5'),
+  }
 }
 
 export function parseMMEAF(xml: string): MMEAFParseResult {
@@ -400,6 +414,10 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
 
     const contOf = ga(mmEl, 'continuation_of')
     if (contOf) block.attrs['continuationOfId'] = contOf
+
+    if (ga(mmEl, 'intonation') === 'true') block.attrs['intonation'] = true
+    const intCh = ga(mmEl, 'intonation_channel')
+    if (intCh != null && intCh !== '') block.attrs['intonationChannel'] = Number(intCh)
 
     let offset = 0
     for (const tok of ((mmEl['mm:t'] ?? []) as Rec[])) {
@@ -816,6 +834,21 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
   const fontConfigEl   = mmDataEl['mm:font_config'] as Rec | undefined
   const transcriptFont = fontConfigEl ? (ga(fontConfigEl, 'transcript_font') ?? '') : ''
 
+  // Pitch config (how pitch was generated)
+  let pitchConfig: PitchConfigMeta | undefined
+  const pitchConfigEl = mmDataEl['mm:pitch_config'] as Rec | undefined
+  const pitchDefaultsEl = pitchConfigEl?.['mm:pitch'] as Rec | undefined
+  if (pitchDefaultsEl) {
+    const channels = ((pitchConfigEl?.['mm:pitch_channel'] ?? []) as Rec[])
+      .map(el => ({
+        mediaKey: ga(el, 'media_key') ?? '',
+        channelIndex: Number(ga(el, 'channel') ?? '0'),
+        settings: parsePitchSettings(el),
+      }))
+      .filter(c => c.mediaKey !== '' && !Number.isNaN(c.channelIndex))
+    pitchConfig = { defaults: parsePitchSettings(pitchDefaultsEl), ...(channels.length ? { channels } : {}) }
+  }
+
   // Symbol defs
   const symbolDefs: SymbolDef[] = []
   const symbolDefsEl = mmDataEl['mm:symbol_defs'] as Rec | undefined
@@ -1054,6 +1087,7 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
     transcriptFont,
     suggestions,
     bookmarks,
+    ...(pitchConfig ? { pitchConfig } : {}),
   }
 }
 

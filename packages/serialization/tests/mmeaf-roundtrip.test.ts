@@ -1423,3 +1423,62 @@ describe('multiple annotations per utterance/token', () => {
     expect(ta?.type === 'time' && ta.end).toBeCloseTo(2.5)
   })
 })
+
+describe('utterance intonation attrs round-trip', () => {
+  it('preserves the per-utterance intonation flag and channel override', () => {
+    const { doc, tokenStore, annotationStore } = makeDocAndStore([{
+      type: 'utterance', participant: 'A', startTimeSeconds: 0, endTimeSeconds: 1,
+      tokens: [{ kind: 'word', text: 'hi' }],
+    }])
+    const attrs = (doc.content[0] as { attrs: Record<string, unknown> }).attrs
+    attrs['intonation'] = true
+    attrs['intonationChannel'] = 1
+
+    const result = parseMMEAF(emitMMEAF(doc, annotationStore, {}, tokenStore))
+    const utt = (result.doc as { content: { type: string; attrs: Record<string, unknown> }[] }).content
+      .find(b => b.type === 'utterance')!
+    expect(utt.attrs['intonation']).toBe(true)
+    expect(utt.attrs['intonationChannel']).toBe(1)
+  })
+
+  it('does not emit intonation attrs when the flag is off', () => {
+    const { doc, tokenStore, annotationStore } = makeDocAndStore([{
+      type: 'utterance', participant: 'A', startTimeSeconds: 0, endTimeSeconds: 1,
+      tokens: [{ kind: 'word', text: 'hi' }],
+    }])
+    const xml = emitMMEAF(doc, annotationStore, {}, tokenStore)
+    expect(xml).not.toContain('intonation=')
+    const result = parseMMEAF(xml)
+    const utt = (result.doc as { content: { type: string; attrs: Record<string, unknown> }[] }).content
+      .find(b => b.type === 'utterance')!
+    expect(utt.attrs['intonation']).toBeUndefined()
+  })
+})
+
+describe('pitch config round-trip', () => {
+  it('round-trips global pitch defaults', () => {
+    const defaults = { backend: 'swiftf0', minHz: 50, maxHz: 600, threshold: 0.15, confidenceThreshold: 0.5 }
+    const xml = emitMMEAF(emptyDoc(), new AnnotationStore(), { pitchConfig: { defaults } })
+    expect(xml).toContain('mm:pitch_config')
+    const result = parseMMEAF(xml)
+    expect(result.pitchConfig?.defaults).toEqual(defaults)
+    expect(result.pitchConfig?.channels).toBeUndefined()
+  })
+
+  it('round-trips per-channel overrides', () => {
+    const defaults = { backend: 'swiftf0', minHz: 50, maxHz: 600, threshold: 0.15, confidenceThreshold: 0.5 }
+    const channels = [
+      { mediaKey: '/media/a.wav', channelIndex: 0, settings: { backend: 'yin', minHz: 70, maxHz: 500, threshold: 0.2, confidenceThreshold: 0.6 } },
+      { mediaKey: '/media/a.wav', channelIndex: 1, settings: defaults },
+    ]
+    const result = parseMMEAF(emitMMEAF(emptyDoc(), new AnnotationStore(), { pitchConfig: { defaults, channels } }))
+    expect(result.pitchConfig?.defaults).toEqual(defaults)
+    expect(result.pitchConfig?.channels).toEqual(channels)
+  })
+
+  it('omits pitch_config when not provided', () => {
+    const xml = emitMMEAF(emptyDoc(), new AnnotationStore())
+    expect(xml).not.toContain('mm:pitch_config')
+    expect(parseMMEAF(xml).pitchConfig).toBeUndefined()
+  })
+})

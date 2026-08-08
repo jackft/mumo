@@ -1,5 +1,5 @@
 import { zipSync, strToU8 } from 'fflate'
-import type { MumoManifest, MumoImageEntry, MumoSpectrogramEntry, MumoTrackBufferEntry, MumoCVEntry } from './mumo-types.js'
+import type { MumoManifest, MumoImageEntry, MumoSpectrogramEntry, MumoTrackBufferEntry, MumoPitchEntry, MumoCVEntry } from './mumo-types.js'
 
 export interface MumoImageInput {
   filename: string
@@ -18,6 +18,19 @@ export interface MumoTrackBufferInput {
   trackSetId: string
   trackId: string
   /** Raw Float32Array bytes (little-endian). */
+  data: Uint8Array
+}
+
+export interface MumoPitchInput {
+  /** Media file path (or filename) this channel belongs to. */
+  mediaKey: string
+  channelIndex: number
+  numFrames: number
+  /** PitchSettings used to compute this channel. */
+  settings: Record<string, unknown>
+  /** Whether the pitch overlay was toggled on for this channel's waveform lane. */
+  enabled?: boolean
+  /** Raw Float32Array bytes (little-endian): [times, f0, confidence] concatenated. */
   data: Uint8Array
 }
 
@@ -43,6 +56,8 @@ export interface MumoPackInput {
   trackSetsJSON?: string
   /** One entry per track with a populated detection buffer. */
   trackBuffers?: MumoTrackBufferInput[]
+  /** One entry per audio channel with a computed pitch track. */
+  pitch?: MumoPitchInput[]
   /** Computer-vision artifacts, stored under cv/ in the archive. */
   cvArtifacts?: MumoCVInput[]
 }
@@ -85,6 +100,21 @@ export function packMumo(input: MumoPackInput): Uint8Array {
     trackBufferEntries.push({ path, trackSetId: buf.trackSetId, trackId: buf.trackId })
   }
 
+  const pitchEntries: MumoPitchEntry[] = []
+  let pitchIdx = 0
+  for (const p of input.pitch ?? []) {
+    const path = `pitch/${pitchIdx++}.f32`
+    files[path] = p.data
+    pitchEntries.push({
+      path,
+      mediaKey: p.mediaKey,
+      channelIndex: p.channelIndex,
+      numFrames: p.numFrames,
+      settings: p.settings,
+      ...(p.enabled ? { enabled: true } : {}),
+    })
+  }
+
   const cvEntries: MumoCVEntry[] = []
   for (const cv of input.cvArtifacts ?? []) {
     const path = `cv/${cv.filename}`
@@ -106,6 +136,7 @@ export function packMumo(input: MumoPackInput): Uint8Array {
     ...(input.mediaPaths?.length ? { mediaPaths: input.mediaPaths } : {}),
     ...(trackSetsPath ? { trackSets: trackSetsPath } : {}),
     ...(trackBufferEntries.length ? { trackBuffers: trackBufferEntries } : {}),
+    ...(pitchEntries.length ? { pitch: pitchEntries } : {}),
   }
   files['manifest.json'] = strToU8(JSON.stringify(manifest, null, 2))
 

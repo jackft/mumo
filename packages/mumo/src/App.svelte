@@ -2,7 +2,7 @@
   import { onMount, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import * as Y from 'yjs'
-  import { TranscriptEditor, TranscriptOverlay, OverlapOverlayPlugin, BlockHighlightOverlayPlugin, PatternOverlayPlugin, initYXmlFragment, ySyncPluginKey, setAllGlosses, setGlossesVisible, resolveTokenRanges, setUttTiersVisible } from '@mumo/editor'
+  import { TranscriptEditor, TranscriptOverlay, OverlapOverlayPlugin, BlockHighlightOverlayPlugin, PatternOverlayPlugin, initYXmlFragment, ySyncPluginKey, setAllGlosses, setGlossesVisible, resolveTokenRanges, setUttTiersVisible, redrawAllProsody } from '@mumo/editor'
   import type { TokenRef, GlossEntry, FormattingState, PatternOverlayEntry } from '@mumo/editor'
   import { Timeline } from '@mumo/timeline'
   import type { SnapPlugin, SnapMode, CommitEntry } from '@mumo/timeline'
@@ -14,7 +14,7 @@
   import { MediaResolver } from './media-resolver.js'
   import appIconUrl from './assets/mumo.svg'
   import magnetIconUrl from './assets/magnet.svg'
-  import type { EAFDocument, EAFMediaDescriptor, MumoImageInput, MumoSpectrogramInput, MumoTrackBufferInput } from '@mumo/serialization'
+  import type { EAFDocument, EAFMediaDescriptor, MumoImageInput, MumoSpectrogramInput, MumoTrackBufferInput, MumoPitchInput, PitchConfigMeta, PitchSettingsMeta } from '@mumo/serialization'
   import { FileController } from './fileController.js'
   import type { ImportResult } from './formats.js'
   import { WebPlatformIO, guessMime } from './platform.js'
@@ -676,6 +676,46 @@
   // re-applied instantly without re-detecting).
   // eslint-disable-next-line svelte/prefer-svelte-reactivity -- imperative cache; reactivity flows through mediaSignals via _syncPitchOverlay
   const pitchTracks = new Map<string, { times: Float32Array; f0: Float32Array; confidence: Float32Array }>()
+  // Per-channel pitch-settings overrides (empty today; the UI edits only the global `pitchSettings`,
+  // but the format/round-trip already carry per-channel overrides so a noisier channel can be tuned
+  // separately later). Keyed by `${mediaKey} ch${idx}`; falls back to the global `pitchSettings`.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- imperative map; not rendered directly
+  const pitchChannelSettings = new Map<string, { mediaKey: string; channelIndex: number; settings: PitchSettings }>()
+  // Pitch tracks loaded from a .mumo, awaiting their channel's waveform signal so they can be re-keyed
+  // by the (new session) playerId. Keyed by `${mediaKey} ch${idx}`. Consumed in onWaveform.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- imperative map; drained on load
+  const _pendingLoadedPitch = new Map<string, { times: Float32Array; f0: Float32Array; confidence: Float32Array; enabled: boolean }>()
+
+  // Stable identity for a media item across save/reload: the file path, else its filename. NOT a
+  // content hash — that isn't reliably available (desktop reload uses an empty File over a path) —
+  // and NOT the player id or array index (per-session / decode-order dependent).
+  function _mediaKey(player: { track?: { path?: string | null } | null; state?: { filename?: string } | null } | undefined): string {
+    return player?.track?.path ?? player?.state?.filename ?? ''
+  }
+  const _pitchKey = (mediaKey: string, ch: number): string => `${mediaKey} ch${ch}`
+
+  function resolvePitchSettings(mediaKey: string, ch: number): PitchSettings {
+    return pitchChannelSettings.get(_pitchKey(mediaKey, ch))?.settings ?? pitchSettings
+  }
+
+  function _metaToPitchSettings(m: PitchSettingsMeta): PitchSettings {
+    return {
+      backend: m.backend === 'yin' ? 'yin' : 'swiftf0',
+      minHz: m.minHz, maxHz: m.maxHz, threshold: m.threshold, confidenceThreshold: m.confidenceThreshold,
+    }
+  }
+
+  // Pitch-generation metadata for `.mmeaf` (global defaults + any per-channel overrides).
+  function buildPitchConfig(): PitchConfigMeta {
+    const toMeta = (s: PitchSettings): PitchSettingsMeta => ({
+      backend: s.backend, minHz: s.minHz, maxHz: s.maxHz, threshold: s.threshold, confidenceThreshold: s.confidenceThreshold,
+    })
+    const channels: NonNullable<PitchConfigMeta['channels']> = []
+    for (const v of pitchChannelSettings.values()) {
+      channels.push({ mediaKey: v.mediaKey, channelIndex: v.channelIndex, settings: toMeta(v.settings) })
+    }
+    return { defaults: toMeta(pitchSettings), ...(channels.length ? { channels } : {}) }
+  }
 
   function _buildPitchOverlay(track: { times: Float32Array; f0: Float32Array; confidence: Float32Array }): { samples: Array<[number, number]>; yMin: number; yMax: number } | null {
     const { times, confidence } = track
@@ -717,6 +757,9 @@
       return rest
     })
     _flushSignals()
+    // Pitch data changed (compute, load-inject, or filter tweak) → refresh transcript intonation
+    // contours, which read pitch via getIntonation but don't observe it. rAF-debounced per nodeview.
+    redrawAllProsody()
   }
 
   // Intonation contour data for a transcript block: the f0 samples of `channel` over [t0, t1] plus
@@ -1573,6 +1616,18 @@
           { id, label, kind: 'waveform' as const, waveformBins: bins, height: 20, timeOffset },
         ].sort(sortSignals)
         _flushSignals()
+        // Restore persisted pitch for this channel (from a loaded .mumo) instead of recomputing.
+        // Keyed by media identity (path/filename), so it survives the player's new session id.
+        const mediaKey = _mediaKey(player)
+        if (mediaKey) {
+          const pending = _pendingLoadedPitch.get(_pitchKey(mediaKey, ch))
+          if (pending) {
+            pitchTracks.set(id, { times: pending.times, f0: pending.f0, confidence: pending.confidence })
+            if (pending.enabled) pitchChannels.add(id)  // restore the waveform overlay toggle
+            _pendingLoadedPitch.delete(_pitchKey(mediaKey, ch))
+            pitchComputed = true  // suppresses _maybeComputePitch below (no redundant re-detect)
+          }
+        }
         // Audio analyzed → run the deferred analyzers (VAD if enabled, pitch for any enabled channel).
         _maybeComputeVad()
         _maybeComputePitch()
@@ -2574,6 +2629,30 @@ function ctxEditUttTier() {
       }
       _syncTrackOverlay()
     }
+    // Restore persisted pitch. Settings first (so the confidence gate / range match how it was
+    // computed); then stash the raw f0 tracks keyed by media identity — onWaveform injects each into
+    // pitchTracks when that channel's waveform signal arrives, so nothing is re-detected.
+    _pendingLoadedPitch.clear()
+    pitchChannelSettings.clear()
+    if (parsed.pitchConfig) {
+      pitchSettings = _metaToPitchSettings(parsed.pitchConfig.defaults)
+      multiPlayer.setPitchSettings(pitchSettings)
+      for (const c of parsed.pitchConfig.channels ?? []) {
+        pitchChannelSettings.set(_pitchKey(c.mediaKey, c.channelIndex), { mediaKey: c.mediaKey, channelIndex: c.channelIndex, settings: _metaToPitchSettings(c.settings) })
+      }
+    }
+    for (const entry of unpacked.manifest.pitch ?? []) {
+      const raw = unpacked.pitch.get(entry.path)
+      if (!raw) continue
+      const aligned = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength)
+      const all = new Float32Array(aligned)
+      const n = entry.numFrames
+      if (all.length < n * 3) continue  // truncated / corrupt sidecar
+      _pendingLoadedPitch.set(_pitchKey(entry.mediaKey, entry.channelIndex), {
+        times: all.slice(0, n), f0: all.slice(n, n * 2), confidence: all.slice(n * 2, n * 3),
+        enabled: entry.enabled === true,
+      })
+    }
     // Media descriptors from the MMEAF, or synthesized from the manifest's
     // mediaPaths for old .mumo files saved before MEDIA_DESCRIPTOR was embedded.
     const mediaDescs: EAFMediaDescriptor[] = parsed.media.length > 0
@@ -2649,6 +2728,7 @@ function ctxEditUttTier() {
             ...(m.mediaHash ? { mediaHash: m.mediaHash } : {}),
             ...(m.timeOriginMs !== undefined ? { timeOrigin: m.timeOriginMs } : {}),
           })) } : {}),
+          pitchConfig: buildPitchConfig(),
         }, ts)
       },
     })
@@ -4464,6 +4544,7 @@ function ctxEditUttTier() {
       ...(primaryRel ? { relativeMediaUrl: primaryRel } : {}),
       ...(primaryTrack?.offsetSec ? { timeOrigin: Math.round(primaryTrack.offsetSec * 1000) } : {}),
       ...(additionalMedia.length ? { additionalMedia } : {}),
+      pitchConfig: buildPitchConfig(),
     }, tokenStore)
 
     const imageInputs: MumoImageInput[] = []
@@ -4535,10 +4616,33 @@ function ctxEditUttTier() {
       }
     }
 
+    // Collect computed pitch tracks (raw f0), keyed by media identity (path/filename) so they reload
+    // without re-detecting. Persist every computed channel (nothing recomputes after reload).
+    const pitchInputs: MumoPitchInput[] = []
+    for (const [key, track] of pitchTracks) {
+      const m = /^(.*):waveform:ch(\d+)$/.exec(key)
+      if (!m) continue
+      const playerId = m[1]!, ch = Number(m[2])
+      const mediaKey = _mediaKey(multiPlayer.players.find(p => p.id === playerId))
+      if (!mediaKey) continue  // no stable key → skip (would be unrecoverable on reload)
+      const numFrames = track.f0.length
+      const buf = new Float32Array(numFrames * 3)
+      buf.set(track.times, 0)
+      buf.set(track.f0, numFrames)
+      buf.set(track.confidence, numFrames * 2)
+      pitchInputs.push({
+        mediaKey, channelIndex: ch, numFrames,
+        settings: { ...resolvePitchSettings(mediaKey, ch) },
+        ...(pitchChannels.has(key) ? { enabled: true } : {}),
+        data: new Uint8Array(buf.buffer),
+      })
+    }
+
     const packed = packMumo({
       mmeaf, images: imageInputs, spectrograms: spectrogramInputs, mediaPaths,
       ...(trackSetsJSON !== undefined ? { trackSetsJSON } : {}),
       ...(trackBufferInputs.length ? { trackBuffers: trackBufferInputs } : {}),
+      ...(pitchInputs.length ? { pitch: pitchInputs } : {}),
     })
     if (isElectron && filecontroller.currentFilePath) {
       type EApi = { saveFile(path: string, data: Uint8Array): Promise<void> }
@@ -4790,7 +4894,7 @@ function ctxEditUttTier() {
     onadd={handleParticipantAdd}
     onupdate={handleParticipantUpdate}
     onremove={handleParticipantRemove}
-    onchannelchange={(id, channel) => store.setParticipantChannel(id, channel)}
+    onchannelchange={(id, channel) => { store.setParticipantChannel(id, channel); redrawAllProsody() }}
     oncopystructure={handleCopyStructure}
     onclose={() => participantsDlgOpen = false}
   />

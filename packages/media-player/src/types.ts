@@ -112,7 +112,8 @@ export interface FrameStat {
 
 export type PitchBackend = 'yin' | 'swiftf0'
 
-/** Derived per-channel pitch track (transient — re-derived on load, not persisted). Explicit
+/** Derived per-channel pitch track. Computed in the worker; the host may persist the raw arrays to
+ *  `.mumo` (pitch sidecars) and restore them on load, otherwise it's re-derived from audio. Explicit
  *  per-frame `times` (seconds, frame centers) so both backends' framings compose. `f0 = 0` marks an
  *  unvoiced frame; `confidence` is the backend's own [0,1] voicing/periodicity score. */
 export interface PitchTrack {

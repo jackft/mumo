@@ -9,6 +9,8 @@ export interface MumoUnpackResult {
   trackSetsJSON: string | null
   /** Detection buffers keyed by `"${trackSetId}/${trackId}"`. */
   trackBuffers: Map<string, Uint8Array>
+  /** Pitch track buffers keyed by archive path (metadata — mediaKey/channelIndex — in manifest.pitch). */
+  pitch: Map<string, Uint8Array>
   /** CV artifact entries — [] for old manifests (cv: null / legacy shape). */
   cvEntries: MumoCVEntry[]
   /** CV artifact bytes keyed by archive path. */
@@ -67,6 +69,12 @@ export function unpackMumo(data: Uint8Array): MumoUnpackResult {
     if (raw) trackBuffers.set(`${entry.trackSetId}/${entry.trackId}`, raw)
   }
 
+  const pitch = new Map<string, Uint8Array>()
+  for (const entry of manifest.pitch ?? []) {
+    const raw = files[entry.path]
+    if (raw) pitch.set(entry.path, raw)
+  }
+
   // Anything that is not an array is a legacy placeholder (null / MumoCVPaths).
   const cvEntries: MumoCVEntry[] = Array.isArray(manifest.cv) ? manifest.cv : []
   const cvFiles = new Map<string, Uint8Array>()
@@ -75,5 +83,5 @@ export function unpackMumo(data: Uint8Array): MumoUnpackResult {
     if (raw) cvFiles.set(entry.path, raw)
   }
 
-  return { manifest, mmeaf, images, trackSetsJSON, trackBuffers, cvEntries, cvFiles }
+  return { manifest, mmeaf, images, trackSetsJSON, trackBuffers, pitch, cvEntries, cvFiles }
 }

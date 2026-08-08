@@ -23,7 +23,36 @@ import { eafXmlBuilder, buildEAFDocumentObject } from './eaf-emit.js'
 import type { EmitEAFOptions } from './eaf-emit.js'
 import { IdMap } from './id-map.js'
 
-export type EmitMMEAFOptions = EmitEAFOptions
+/** Pitch-detection settings as serialized to `.mmeaf` (structural mirror of media-player's
+ *  PitchSettings — kept local so serialization needn't depend on media-player). */
+export interface PitchSettingsMeta {
+  backend: string
+  minHz: number
+  maxHz: number
+  threshold: number
+  confidenceThreshold: number
+}
+
+/** How pitch was generated: document-wide defaults plus optional per-channel overrides. */
+export interface PitchConfigMeta {
+  defaults: PitchSettingsMeta
+  channels?: { mediaKey: string; channelIndex: number; settings: PitchSettingsMeta }[]
+}
+
+export type EmitMMEAFOptions = EmitEAFOptions & {
+  /** Pitch-generation metadata, emitted as <mm:pitch_config>. */
+  pitchConfig?: PitchConfigMeta
+}
+
+function pitchSettingsToObj(s: PitchSettingsMeta): Record<string, unknown> {
+  return {
+    '@_backend': s.backend,
+    '@_min_hz': s.minHz,
+    '@_max_hz': s.maxHz,
+    '@_threshold': s.threshold,
+    '@_confidence_threshold': s.confidenceThreshold,
+  }
+}
 
 // PM attrs and annotation features are JSON scalars in practice; `x ?? ''`
 // types as `{}` under strict lint, so coerce through one audited helper.
@@ -184,6 +213,9 @@ export function emitMMEAF(
       if (uttTierId) blockObj['@_tier_id'] = uttTierId
       const contOfId = (a['continuationOfId'] as string | undefined) ?? null
       if (contOfId)  blockObj['@_continuation_of'] = contOfId
+      if (a['intonation'] === true) blockObj['@_intonation'] = 'true'
+      const intCh = a['intonationChannel'] as number | null | undefined
+      if (intCh != null) blockObj['@_intonation_channel'] = intCh
       if (tokenElems.length > 0)     blockObj['mm:t']           = tokenElems
       if (inlineMarkElems.length > 0) blockObj['mm:inline_mark'] = inlineMarkElems
 
@@ -725,6 +757,21 @@ export function emitMMEAF(
   const transcriptFont = store.getTranscriptFont()
   if (transcriptFont) {
     mumoData['mm:font_config'] = { '@_transcript_font': transcriptFont }
+  }
+
+  // mm:pitch_config — how pitch was generated (so a reader can regenerate it)
+
+  if (opts.pitchConfig) {
+    const pc = opts.pitchConfig
+    const pitchConfig: Record<string, unknown> = { 'mm:pitch': pitchSettingsToObj(pc.defaults) }
+    if (pc.channels && pc.channels.length > 0) {
+      pitchConfig['mm:pitch_channel'] = pc.channels.map(c => ({
+        '@_media_key': c.mediaKey,
+        '@_channel': c.channelIndex,
+        ...pitchSettingsToObj(c.settings),
+      }))
+    }
+    mumoData['mm:pitch_config'] = pitchConfig
   }
 
   // mm:symbol_defs
