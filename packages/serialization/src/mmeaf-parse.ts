@@ -12,7 +12,7 @@
 
 import { XMLParser } from 'fast-xml-parser'
 import { newId } from '@mumo/core'
-import type { PatternSchemaJSON, PatternJSON, AnnotationJSON, AnchorJSON, TokenRecord, TierDefJSON, SymbolDef, ParticipantJSON, Suggestion, SuggestedChange, TextletCode, SlotInstance, MetricValue, NoteEntry } from '@mumo/core'
+import type { PatternSchemaJSON, PatternJSON, AnnotationJSON, AnchorJSON, TokenRecord, TierDefJSON, SymbolDef, ParticipantJSON, Suggestion, SuggestedChange, TextletCode, SlotInstance, MetricValue, MetricType, NoteEntry } from '@mumo/core'
 import { parseEAF } from './eaf-parse.js'
 import type { ParseResult } from './eaf-parse.js'
 import type { PMNodeJSON } from './types.js'
@@ -83,6 +83,18 @@ function parseFeatureElems(els: Rec[]): Record<string, unknown> {
     }
   }
   return out
+}
+
+// Metric values are stored as XML attributes, so fast-xml-parser returns them
+// as strings. Decode them using their metric schema (as required by the MMEAF
+// schema) so boolean checkboxes receive actual booleans after a file reload.
+function parseMetricValue(el: Rec, metricTypes: ReadonlyMap<string, MetricType>): MetricValue {
+  const schemaId = ga(el, 'schema_id') ?? ''
+  const raw = ga(el, 'value') ?? ''
+  return {
+    schemaId,
+    value: metricTypes.get(schemaId) === 'boolean' ? raw === 'true' : raw,
+  }
 }
 
 // Helpers
@@ -667,15 +679,20 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
     })
   }
 
+  const metricTypes = new Map<string, MetricType>()
+  for (const schema of patternSchemas) {
+    for (const slot of schema.slots) {
+      for (const metric of slot.metrics) metricTypes.set(metric.id, metric.type)
+    }
+  }
+
   // Patterns
   const patternsEl = mmDataEl['mm:patterns'] as Rec | undefined
   const patterns: PatternJSON[] = []
   for (const el of (((patternsEl?.['mm:pattern'] ?? [])) as Rec[])) {
     const slots = (((el['mm:slot_instance'] ?? [])) as Rec[]).map(siEl => {
-      const metrics = (((siEl['mm:metric_value'] ?? [])) as Rec[]).map(mvEl => ({
-        schemaId: ga(mvEl, 'schema_id') ?? '',
-        value:    ga(mvEl, 'value') ?? '',
-      }))
+      const metrics = (((siEl['mm:metric_value'] ?? [])) as Rec[])
+        .map(mvEl => parseMetricValue(mvEl, metricTypes))
       return {
         id:           ga(siEl, 'id') ?? newId(),
         schemaSlotId: ga(siEl, 'schema_slot_id') ?? '',
@@ -985,10 +1002,8 @@ export function parseMMEAF(xml: string): MMEAFParseResult {
           const slotId       = ga(siEl, 'id') ?? newId()
           const schemaSlotId = ga(siEl, 'schema_slot_id') ?? ''
           const annotationId = ga(siEl, 'annotation_id') ?? ''
-          const metrics: MetricValue[] = ((siEl['mm:metric_value'] ?? []) as Rec[]).map(mv => ({
-            schemaId: ga(mv, 'schema_id') ?? '',
-            value:    ga(mv, 'value') ?? '',
-          }))
+          const metrics: MetricValue[] = ((siEl['mm:metric_value'] ?? []) as Rec[])
+            .map(mv => parseMetricValue(mv, metricTypes))
           const slot: SlotInstance = { id: slotId, schemaSlotId, annotationId, metrics }
 
           let pendingAnnotation: AnnotationJSON | undefined

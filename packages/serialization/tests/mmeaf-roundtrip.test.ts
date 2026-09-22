@@ -383,6 +383,40 @@ describe('patterns round-trip', () => {
     expect(mv.value).toBe('NOUN')
   })
 
+  it('decodes boolean metric values using their metric schema', () => {
+    const store = new AnnotationStore()
+    const schemaId = newId()
+    const slotId = newId()
+    const trueMetricId = newId()
+    const falseMetricId = newId()
+    const textMetricId = newId()
+
+    store.addPatternSchema({
+      name: 'Test', slots: [{
+        id: slotId, name: 's', anchorKind: 'textlet',
+        metrics: [
+          { id: trueMetricId, name: 'checked', type: 'boolean' },
+          { id: falseMetricId, name: 'unchecked', type: 'boolean' },
+          { id: textMetricId, name: 'literal', type: 'text' },
+        ],
+      }],
+    }, schemaId)
+    store.addPattern(schemaId, [{
+      id: newId(), schemaSlotId: slotId, annotationId: newId(), metrics: [
+        { schemaId: trueMetricId, value: true },
+        { schemaId: falseMetricId, value: false },
+        { schemaId: textMetricId, value: 'true' },
+      ],
+    }])
+
+    const metrics = parseMMEAF(emitMMEAF(emptyDoc(), store)).patterns[0]!.slots[0]!.metrics
+    expect(metrics).toEqual([
+      { schemaId: trueMetricId, value: true },
+      { schemaId: falseMetricId, value: false },
+      { schemaId: textMetricId, value: 'true' },
+    ])
+  })
+
   it('emits no FRAMES block when store has none', () => {
     const xml = emitMMEAF(emptyDoc(), new AnnotationStore())
     expect(xml).not.toContain('<mm:patterns>')
