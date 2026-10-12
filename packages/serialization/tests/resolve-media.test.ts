@@ -94,6 +94,15 @@ describe('mediaCandidatePaths — path extraction', () => {
     expect(candidates[0]).toBe('C:/Users/researcher/audio.wav')
   })
 
+  it('handles bare Windows paths (no file:// scheme)', () => {
+    const candidates = mediaCandidatePaths(
+      desc('C:/Users/Jack/video.mp4'),
+      'C:/Projects/study.mumo',
+    )
+    expect(candidates[0]).toBe('C:/Users/Jack/video.mp4')
+    expect(candidates[1]).toBe('C:/Projects/video.mp4')
+  })
+
   it('extracts filename correctly from deep absolute path', () => {
     const candidates = mediaCandidatePaths(
       desc('file:///deep/nested/path/session01.mp4'),

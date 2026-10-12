@@ -268,6 +268,30 @@ describe('MediaResolver — media://localhost URLs from older saves', () => {
     expect(result).toBeNull()
     expect(platform.openBinaryFile).toHaveBeenCalledTimes(1)
   })
+
+  it('resolves Windows media://localhost/C:/... paths without a leading slash (Windows path bug)', async () => {
+    // Old Electron saves on Windows stored media://localhost/C:/Users/Jack/video.mp4.
+    // new URL(...).pathname gives /C:/Users/Jack/video.mp4 — the leading / makes
+    // fsPromises.access fail on Windows. The resolver must strip it.
+    const platform = makeDesktopPlatform({ existing: ['C:/Users/Jack/video.mp4'] })
+    const result = await new MediaResolver().resolve(
+      desc('media://localhost/C:/Users/Jack/video.mp4'),
+      'C:/Users/Jack/project.mumo',
+      platform,
+    )
+    expect(result).toMatchObject({ kind: 'file', path: 'C:/Users/Jack/video.mp4' })
+    expect(platform.openBinaryFile).not.toHaveBeenCalled()
+  })
+
+  it('decodes percent-encoded Windows paths', async () => {
+    const platform = makeDesktopPlatform({ existing: ['C:/My Documents/video.mp4'] })
+    const result = await new MediaResolver().resolve(
+      desc('media://localhost/C:/My%20Documents/video.mp4'),
+      'C:/My Documents/project.mumo',
+      platform,
+    )
+    expect(result).toMatchObject({ kind: 'file', path: 'C:/My Documents/video.mp4' })
+  })
 })
 
 // Picker fallback

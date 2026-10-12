@@ -19,11 +19,15 @@ function isRemoteMediaUrl(url: string): boolean {
  * media://localhost/... is Electron's streaming scheme; older saves persisted it as
  * MEDIA_URL, but it's machine-specific. Returns the decoded filesystem path so the
  * cascade can treat it like any other local path, or null if the URL isn't that scheme.
+ *
+ * On Windows, new URL(url).pathname produces /C:/Users/... (leading slash). Strip that
+ * slash so the result is a valid Windows path (C:/Users/...) that fsPromises.access accepts.
  */
 function extractMachineLocalPath(url: string): string | null {
   if (!url.startsWith('media://localhost/')) return null
   try {
-    return decodeURIComponent(new URL(url).pathname)
+    const p = decodeURIComponent(new URL(url).pathname)
+    return /^\/[A-Za-z]:/.test(p) ? p.slice(1) : p
   } catch {
     return null
   }

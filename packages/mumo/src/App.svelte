@@ -1323,8 +1323,12 @@
             const t = Number(action.slice('seek-to-time:'.length))
             if (Number.isFinite(t)) { currentView = 'editor'; void multiPlayer.seek(t) }
           } else if (action.startsWith('open-file-at-bookmark:')) {
-            const [, filePath, bmId] = action.split(':')
-            if (filePath) void _openMumoPath(filePath, bmId)
+            // split on the LAST colon — the file path may contain a colon (Windows drive letter)
+            const rest = action.slice('open-file-at-bookmark:'.length)
+            const sep = rest.lastIndexOf(':')
+            const filePath = sep > 0 ? rest.slice(0, sep) : rest
+            const bmId = sep > 0 ? rest.slice(sep + 1) : ''
+            if (filePath && bmId) void _openMumoPath(filePath, bmId)
           } else if (action.startsWith('open-collection:')) {
             const id = Number(action.slice('open-collection:'.length))
             currentView = 'collection'
@@ -4524,22 +4528,26 @@ function ctxEditUttTier() {
     const primaryTrack = primaryPlayer?.track
     // RELATIVE_MEDIA_URL makes the file portable: on another machine the absolute
     // path fails, but the cascade finds media kept in the same place relative to the .mumo.
+    // For remote URLs (http/rtsp/…) path is null — store the URL directly; no relative path.
     const savePath = filecontroller.currentFilePath
     const relFor = (mediaPath: string) => (savePath ? relativeMediaUrl(mediaPath, savePath) : null)
     const additionalMedia = secondaryPlayers.flatMap(p => {
       const t = p.track
-      if (!t?.path) return []
-      const rel = relFor(t.path)
+      if (!t) return []
+      const url = trackToMediaUrl(t)
+      if (!url) return []
+      const rel = t.path ? relFor(t.path) : null
       return [{
-        mediaUrl: t.path,
+        mediaUrl: url,
         ...(t.file.type ? { mimeType: normalizeMimeType(t.file.type) } : {}),
         ...(rel ? { relativeMediaUrl: rel } : {}),
         ...(t.offsetSec ? { timeOrigin: Math.round(t.offsetSec * 1000) } : {}),
       }]
     })
+    const primaryUrl = primaryTrack ? trackToMediaUrl(primaryTrack) : null
     const primaryRel = primaryTrack?.path ? relFor(primaryTrack.path) : null
     const mmeaf = emitMMEAF(docJSON, store, {
-      ...(primaryTrack?.path ? { mediaUrl: primaryTrack.path } : {}),
+      ...(primaryUrl ? { mediaUrl: primaryUrl } : {}),
       ...(primaryTrack?.file.type ? { mimeType: normalizeMimeType(primaryTrack.file.type) } : {}),
       ...(primaryRel ? { relativeMediaUrl: primaryRel } : {}),
       ...(primaryTrack?.offsetSec ? { timeOrigin: Math.round(primaryTrack.offsetSec * 1000) } : {}),
@@ -4647,7 +4655,13 @@ function ctxEditUttTier() {
     if (isElectron && filecontroller.currentFilePath) {
       type EApi = { saveFile(path: string, data: Uint8Array): Promise<void> }
       const eApi = (window as unknown as { electronAPI: EApi }).electronAPI
-      await eApi.saveFile(filecontroller.currentFilePath, packed)
+      try {
+        await eApi.saveFile(filecontroller.currentFilePath, packed)
+      } catch (err) {
+        console.error('Failed to save:', err)
+        alert(`Failed to save file:\n${err instanceof Error ? err.message : String(err)}`)
+        return
+      }
     } else {
       const a = Object.assign(document.createElement('a'), {
         href: URL.createObjectURL(new Blob([(packed.buffer as ArrayBuffer).slice(packed.byteOffset, packed.byteOffset + packed.byteLength)], { type: 'application/zip' })),

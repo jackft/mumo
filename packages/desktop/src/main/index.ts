@@ -160,7 +160,9 @@ app.on('window-all-closed', () => {
 
 async function handleMediaRequest(request: Request): Promise<Response> {
   const url = new URL(request.url)
-  const filePath = decodeURIComponent(url.pathname)
+  const rawPath = decodeURIComponent(url.pathname)
+  // On Windows, url.pathname is /C:/Users/... — strip the leading slash from drive-letter paths.
+  const filePath = /^\/[A-Za-z]:/.test(rawPath) ? rawPath.slice(1) : rawPath
 
   let fileSize: number
   try {
