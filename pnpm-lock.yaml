@@ -182,8 +182,8 @@ importers:
         specifier: workspace:*
         version: link:../audio-analysis-wasm
       mediabunny:
-        specifier: ^1.50.3
-        version: 1.50.6
+        specifier: ^1.61.3
+        version: 1.61.3
       onnxruntime-web:
         specifier: ^1.27.0
         version: 1.27.0
@@ -3039,8 +3039,8 @@ packages:
   mdn-data@2.27.1:
     resolution: {integrity: sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==}
 
-  mediabunny@1.50.6:
-    resolution: {integrity: sha512-ktHEuGFZ1lqXx16CQiViawxg8Kn2cBcpudjjko7dMuDHMT8W/UrQ0ojhfrXL69/nUrbVFGMwmu58pFz9d0MyOQ==}
+  mediabunny@1.61.3:
+    resolution: {integrity: sha512-kUqLKVXQVwHR62GkOJxYosAmXERJbqnXBgJDTtRlxHEYviVkMg/Evhl9XN6kedqS5LP1tV4kFKyzY/V4a4ofow==}
 
   mime-db@1.52.0:
     resolution: {integrity: sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==}
@@ -6832,7 +6832,7 @@ snapshots:
 
   mdn-data@2.27.1: {}
 
-  mediabunny@1.50.6:
+  mediabunny@1.61.3:
     dependencies:
       '@types/dom-mediacapture-transform': 0.1.11
       '@types/dom-webcodecs': 0.1.13

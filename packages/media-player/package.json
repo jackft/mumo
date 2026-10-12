@@ -14,7 +14,7 @@
     "@mumo/core": "workspace:*",
     "@mumo/timeline": "workspace:*",
     "onnxruntime-web": "^1.27.0",
-    "mediabunny": "^1.50.3",
+    "mediabunny": "^1.61.3",
     "pixi.js": "^8.19.0",
     "audio-analysis-wasm": "workspace:*"
   },
