@@ -12,16 +12,10 @@
       "ignore": []
     },
     "packages/desktop": {
-      "entry": [
-        "src/main/index.ts",
-        "src/preload/index.ts",
-        "src/renderer/index.ts",
-        "electron.vite.config.ts"
-      ],
       "project": ["src/**", "*.ts"]
     }
   },
   "tags": ["+public"],
   "ignoreExportsUsedInFile": true,
-  "ignoreBinaries": ["wasm-pack", "python3"]
+  "ignoreBinaries": ["wasm-pack", "xmllint"]
 }
