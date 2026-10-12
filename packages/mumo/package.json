@@ -30,7 +30,7 @@
     "@types/d3": "^7.4.3",
     "@types/tabulator-tables": "^6.3.5",
     "rollup-plugin-visualizer": "^7.0.1",
-    "svelte": "^5.56.4",
+    "svelte": "^5.57.2",
     "svelte-check": "^4.7.1",
     "typescript": "^6.0.3",
     "vite": "^8.1.2",

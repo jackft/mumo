@@ -23,7 +23,7 @@
     "yjs": "^13.6.31"
   },
   "devDependencies": {
-    "svelte": "^5.56.4",
+    "svelte": "^5.57.2",
     "svelte-check": "^4.7.1",
     "typescript": "^6.0.3"
   }
