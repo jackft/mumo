@@ -64,23 +64,23 @@
 
 <style>
   .lmd-backdrop {
-    position: fixed; inset: 0; z-index: 200;
+    position: fixed; inset: 0; z-index: var(--z-modal, 2000);
     background: transparent; border: none; padding: 0; cursor: default;
   }
   .lmd-panel {
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    background: #fff; border: 1px solid #d0d0d0; border-radius: 6px;
-    min-width: 420px; max-width: 580px; z-index: 201;
+    background: var(--color-bg-0, #fff); border: 1px solid var(--color-border, #d0d0d0); border-radius: var(--radius-md, 6px);
+    min-width: 420px; max-width: 580px; z-index: calc(var(--z-modal, 2000) + 1);
     box-shadow: 0 4px 24px rgba(0,0,0,.12);
-    color: #222; font-size: 13px;
+    color: var(--color-text-1, #222); font-size: 13px;
   }
   .lmd-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px; border-bottom: 1px solid #eee; font-weight: 600;
+    padding: 10px 14px; border-bottom: 1px solid var(--color-border-strong, #eee); font-weight: 600;
     cursor: move; user-select: none;
   }
   .lmd-close {
-    background: none; border: none; cursor: pointer; opacity: 0.45; font-size: 14px; color: #222;
+    background: none; border: none; cursor: pointer; opacity: 0.45; font-size: 14px; color: var(--color-text-1, #222);
   }
   .lmd-close:hover { opacity: 0.9; }
   .lmd-body { padding: 10px 14px; }
@@ -95,40 +95,40 @@
   }
   .lmd-name {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    color: #333; font-size: 12px; min-width: 0;
+    color: var(--color-text-2, #333); font-size: 12px; min-width: 0;
   }
-  .lmd-name-unloaded { color: #888; font-style: italic; }
+  .lmd-name-unloaded { color: var(--color-text-light, #888); font-style: italic; }
   .lmd-name-missing  { color: #b71c1c; font-style: italic; }
   .lmd-status {
-    font-size: 10px; color: #999; white-space: nowrap;
+    font-size: 10px; color: var(--color-text-muted, #999); white-space: nowrap;
     border: 1px solid transparent; border-radius: 8px; padding: 1px 5px;
   }
-  .lmd-status:not(:empty) { border-color: #ddd; }
+  .lmd-status:not(:empty) { border-color: var(--color-border-strong, #ddd); }
   .lmd-status-missing { color: #b71c1c; border-color: #ef9a9a; background: #fff8f8; }
   .lmd-offset-label {
     display: flex; align-items: center; gap: 4px;
-    white-space: nowrap; color: #555; font-size: 12px;
+    white-space: nowrap; color: var(--color-text-3, #555); font-size: 12px;
   }
   .lmd-offset {
-    width: 62px; font-size: 12px; background: #fff;
-    border: 1px solid #ccc; border-radius: 3px; padding: 2px 4px; color: #222;
+    width: 62px; font-size: 12px; background: var(--color-bg-0, #fff);
+    border: 1px solid var(--color-border, #ccc); border-radius: var(--radius-xs, 3px); padding: 2px 4px; color: var(--color-text-1, #222);
   }
   .lmd-actions {
     display: flex; gap: 4px; justify-content: flex-end;
   }
   .lmd-load {
-    background: none; border: 1px solid #1565c0; border-radius: 3px;
+    background: none; border: 1px solid #1565c0; border-radius: var(--radius-xs, 3px);
     color: #1565c0; cursor: pointer; padding: 2px 8px; font-size: 11px; white-space: nowrap;
   }
   .lmd-load:hover { background: #e3f2fd; }
   .lmd-remove {
-    background: none; border: 1px solid #e57373; border-radius: 3px;
+    background: none; border: 1px solid #e57373; border-radius: var(--radius-xs, 3px);
     color: #c62828; cursor: pointer; padding: 2px 8px; font-size: 11px; white-space: nowrap;
   }
   .lmd-remove:hover { background: #c62828; color: #fff; }
-  .lmd-footer { padding: 10px 14px; border-top: 1px solid #eee; }
+  .lmd-footer { padding: 10px 14px; border-top: 1px solid var(--color-border-strong, #eee); }
   .lmd-link-btn {
-    background: none; border: 1px solid #1565c0; border-radius: 4px;
+    background: none; border: 1px solid #1565c0; border-radius: var(--radius-sm, 4px);
     padding: 5px 14px; cursor: pointer; font-size: 12px; width: 100%; color: #1565c0;
   }
   .lmd-link-btn:hover { background: #e3f2fd; }

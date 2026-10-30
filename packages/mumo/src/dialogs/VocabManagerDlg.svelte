@@ -108,7 +108,7 @@
 
   .vocab-list-panel {
     border: 1px solid #e0e0e0;
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -137,12 +137,12 @@
     border-top: 1px solid #eee;
     margin-top: auto;
   }
-  .vocab-new-row input { flex: 1; min-width: 0; padding: 0.3rem 0.4rem; border: 1px solid #ccc; border-radius: 3px; font-size: 0.8rem; font-family: inherit; }
+  .vocab-new-row input { flex: 1; min-width: 0; padding: 0.3rem 0.4rem; border: 1px solid #ccc; border-radius: var(--radius-xs, 3px); font-size: 0.8rem; font-family: inherit; }
   .vocab-new-row button { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 
   .vocab-entries-panel {
     border: 1px solid #e0e0e0;
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
     padding: 0.5rem;
     display: flex;
     flex-direction: column;
@@ -159,7 +159,7 @@
     gap: 0.5rem;
     padding: 0.25rem 0.3rem;
     font-size: 0.85rem;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
   }
   .entry-row:hover { background: #f5f5f5; }
   .entry-value { font-weight: 500; min-width: 80px; }
@@ -173,7 +173,7 @@
     border-top: 1px solid #eee;
     padding-top: 0.5rem;
   }
-  .entry-new-row input { flex: 1; min-width: 0; padding: 0.3rem 0.4rem; border: 1px solid #ccc; border-radius: 3px; font-size: 0.8rem; font-family: inherit; }
+  .entry-new-row input { flex: 1; min-width: 0; padding: 0.3rem 0.4rem; border: 1px solid #ccc; border-radius: var(--radius-xs, 3px); font-size: 0.8rem; font-family: inherit; }
   .entry-new-row button { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 
 </style>

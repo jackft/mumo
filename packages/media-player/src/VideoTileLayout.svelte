@@ -273,7 +273,7 @@
   .mc-btn {
     background: none;
     border: 1px solid var(--color-border, #ccc);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 2px 6px; cursor: pointer; font-size: 12px;
     color: var(--color-text-1, #222); opacity: 0.8;
     white-space: nowrap;
@@ -285,7 +285,7 @@
     font-size: 12px;
     background: var(--color-bg-2, #f5f5f5);
     border: 1px solid var(--color-border, #ccc);
-    border-radius: 3px; padding: 2px 4px;
+    border-radius: var(--radius-xs, 3px); padding: 2px 4px;
     color: var(--color-text-1, #222);
   }
   .mc-vol-wrap { position: relative; }
@@ -293,7 +293,7 @@
     position: absolute; bottom: 100%; left: 0;
     background: var(--color-bg-1, #fafafa);
     border: 1px solid var(--color-border, #ccc);
-    border-radius: 4px; z-index: 200;
+    border-radius: var(--radius-sm, 4px); z-index: var(--z-dropdown, 300);
     box-shadow: 0 -2px 8px rgba(0,0,0,0.15);
   }
   .mc-vol-popup { display: none; padding: 8px 6px 6px; align-items: center; justify-content: center; }
@@ -324,10 +324,10 @@
   .vtl-info-bar {
     display: flex; gap: 10px; flex-wrap: wrap;
     font-size: 10px; font-family: monospace;
-    color: var(--color-text-2, #888);
+    color: var(--color-text-light, #888);
     padding: 2px 6px;
-    background: var(--color-surface, #f5f5f5);
-    border-top: 1px solid var(--color-border, #e0e0e0);
+    background: var(--color-bg-2, #f5f5f5);
+    border-top: 1px solid var(--color-border, #ccc);
     flex-shrink: 0;
   }
 </style>

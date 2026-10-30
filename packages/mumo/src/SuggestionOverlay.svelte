@@ -118,7 +118,7 @@
     const rules: string[] = []
     for (const uttId of next.keys()) {
       const esc = CSS.escape(uttId)
-      rules.push(`[data-id="${esc}"] .utt-participant { background: #fef9c3; outline: 1.5px solid #ca8a04; border-radius: 2px; cursor: pointer; }`)
+      rules.push(`[data-id="${esc}"] .utt-participant { background: #fef9c3; outline: 1.5px solid #ca8a04; border-radius: var(--radius-2xs, 2px); cursor: pointer; }`)
     }
     _getHighlightStyleEl().textContent = rules.join('\n')
   }
@@ -243,9 +243,9 @@
 <style>
   .sug-menu {
     position: fixed;
-    z-index: 500;
+    z-index: var(--z-popover, 500);
     background: var(--color-bg-0, #fff);
-    border: 1px solid var(--color-border, #ddd);
+    border: 1px solid var(--color-border, #ccc);
     border-radius: var(--radius-md, 4px);
     box-shadow: var(--shadow-menu-sm, 0 2px 8px rgba(0,0,0,0.15));
     padding: 3px 0;
@@ -273,14 +273,14 @@
     line-height: 1.5;
     flex-shrink: 0;
   }
-  .sug-check { color: var(--color-active-dark, #15803d); border-color: var(--color-active, #16a34a); }
-  .sug-check:hover { background: var(--color-active-light, #dcfce7); }
-  .sug-x { color: var(--color-danger, #b91c1c); border-color: var(--color-danger, #b91c1c); }
-  .sug-x:hover { background: var(--color-danger-light, #fee2e2); }
+  .sug-check { color: var(--color-active-dark, #15803d); border-color: var(--color-active, #00A08A); }
+  .sug-check:hover { background: var(--color-active-light, #E0F5F2); }
+  .sug-x { color: var(--color-danger, #FF0000); border-color: var(--color-danger, #FF0000); }
+  .sug-x:hover { background: var(--color-danger-light, #FFE8E8); }
 
   .sug-comment {
     font-size: 0.82rem;
-    color: var(--color-text-1, #555);
+    color: var(--color-text-1, #222);
     padding: 0 0.25rem;
     max-width: 240px;
     overflow: hidden;

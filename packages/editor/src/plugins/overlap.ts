@@ -479,9 +479,9 @@ export class OverlapOverlayPlugin implements OverlayPlugin {
       const el = document.createElement('div')
       el.style.cssText = [
         'position:fixed',
-        'z-index:500',
+        'z-index:var(--z-tooltip, 9500)',
         'background:var(--color-bg-0,#fff)',
-        'border:1px solid var(--color-border,#ddd)',
+        'border:1px solid var(--color-border, #ccc)',
         'border-radius:var(--radius-md,6px)',
         'box-shadow:var(--shadow-menu-sm,0 2px 8px rgba(0,0,0,.15))',
         'padding:3px 8px',

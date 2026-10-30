@@ -116,7 +116,7 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem 0.6rem;
-    background: var(--color-bg-1, #f5f5f5);
+    background: var(--color-bg-1, #fafafa);
     border-radius: var(--radius-sm, 4px);
     border: 1px solid var(--color-border);
   }
@@ -201,7 +201,7 @@
     align-items: center;
     gap: 8px;
     padding: 3px 4px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
     cursor: pointer;
     font-size: 0.82rem;
     color: var(--color-text-1);
@@ -242,7 +242,7 @@
   .track-participant {
     font-size: 0.72rem;
     font-weight: 600;
-    color: var(--color-primary, #26a69a);
+    color: var(--color-primary, #5BBCD6);
   }
 
   .track-id {

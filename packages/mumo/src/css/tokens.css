@@ -26,6 +26,8 @@
   --color-bg-4: #e8e8e8;
   --color-bg-5: #e0e0e0;
   --color-bg-menu-hover: #ECF7FB;
+  --color-timeline-bg: #f5f5f5;
+  --color-menubar-bg: #fff;
 
   /* Borders */
   --color-border: #ccc;
@@ -49,8 +51,22 @@
   --color-event-light: #f5f0ff;
   --color-annotation: #26a69a;
   --color-annotation-light: #edfaf8;
+  --color-viz: #388e3c;
+  --color-viz-light: #e8f5e9;
+  --color-anchor: #c0752a;
+
+  /* Accent — used for hover/selection highlights distinct from primary actions */
+  --color-accent: #7c5cbf;
+
+  /* Primary, dimmed — translucent tint for selected-row / hover backgrounds */
+  --color-primary-dim: color-mix(in srgb, var(--color-primary) 12%, transparent);
+
+  /* Tooltips — intentionally dark regardless of app theme, like native OS tooltips */
+  --color-tooltip-bg: #2a2a2a;
+  --color-tooltip-text: #eee;
 
   /* Border radii */
+  --radius-2xs: 2px;
   --radius-xs: 3px;
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -68,4 +84,155 @@
   /* Shadows */
   --shadow-menu: 0 4px 16px rgba(0,0,0,0.12);
   --shadow-menu-sm: 0 3px 12px rgba(0,0,0,0.14);
+
+  /*
+   * z-index scale. Floating UI tiers, low to high. Backdrop + content pairs
+   * within a tier use the tier value and tier value + 1, so simultaneous
+   * surfaces from different components stack predictably instead of tying.
+   */
+  --z-dropdown: 300;       /* anchored dropdown menus/palettes (toolbars, column pickers) */
+  --z-popover: 500;        /* floating popovers anchored to content (annotation edit popover, suggestions) */
+  --z-overlay-panel: 1000; /* larger floating panels (quick-edit panels, note popups) */
+  --z-modal: 2000;         /* true modal dialogs, with their own dimmed backdrop */
+  --z-context-menu: 9000;  /* right-click context menus — above modals, since they can open from within one */
+  --z-tooltip: 9500;       /* hover tooltips — always on top, non-interactive */
+
+  color-scheme: light;
+}
+
+/*
+ * Dark theme. Applies automatically when the OS is in dark mode (unless the
+ * user explicitly picked "Light" in Preferences, which stamps data-theme on
+ * <html>), or always when the user explicitly picked "Dark".
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    /* Palette sourced from VS Code's "Dark Modern" theme — editor.background,
+     * descriptionForeground, syntax token hues, etc. — so the app's dark mode
+     * reads as familiar to anyone who spends their day in a dark-themed editor. */
+    --color-primary: #3794FF;        /* focusBorder / textLink.foreground */
+    --color-primary-hover: #1C97EA;
+    --color-primary-light: #04395E;  /* list.inactiveSelectionBackground */
+    --color-primary-dark: #9CDCFE;   /* variable blue, for emphasis text on dark bg */
+    --color-primary-border: #007FD4;
+
+    --color-danger: #F14C4C;         /* editorError.foreground */
+    --color-danger-hover: #FF6B6B;
+    --color-danger-light: #5A1D1D;
+
+    --color-active: #4EC9B0;         /* type teal */
+    --color-active-hover: #6FDFC4;
+    --color-active-light: #0E3B34;
+    --color-active-dark: #9CECD9;
+    --color-active-border: #1F5048;
+
+    --color-bg-0: #1E1E1E;           /* editor.background */
+    --color-bg-1: #252526;           /* sideBar.background */
+    --color-bg-2: #2D2D2D;           /* tab.inactiveBackground */
+    --color-bg-3: #333333;           /* activityBar.background */
+    --color-bg-4: #3C3C3C;           /* input.background */
+    --color-bg-5: #454545;           /* widget border, reused as a background step */
+    --color-bg-menu-hover: #04395E;  /* list.inactiveSelectionBackground */
+    --color-timeline-bg: #181818;    /* panel.background, darker than editor.background */
+    --color-menubar-bg: #323233;     /* titleBar.activeBackground, lighter than editor.background */
+
+    --color-border: #3C3C3C;
+    --color-border-strong: #555555;
+
+    --color-text-1: #CCCCCC;         /* editor.foreground */
+    --color-text-2: #BBBBBB;
+    --color-text-3: #9D9D9D;         /* descriptionForeground */
+    --color-text-muted: #8A8A8A;
+    --color-text-light: #797979;
+    --color-text-faint: #6A6A6A;
+    --color-text-placeholder: #767676;
+
+    --color-status-ok: #4EC9B0;
+    --color-status-warn: #CCA700;
+
+    --color-event: #569CD6;          /* keyword blue */
+    --color-event-light: #1B2A3A;
+    --color-annotation: #4EC9B0;     /* type teal */
+    --color-annotation-light: #0E3B34;
+    --color-viz: #B5CEA8;            /* number green */
+    --color-viz-light: #2B3B22;
+    --color-anchor: #CE9178;         /* string orange */
+
+    --color-accent: #C586C0;         /* control-keyword purple */
+
+    --color-tooltip-bg: #252526;     /* editorHoverWidget.background */
+    --color-tooltip-text: #CCCCCC;
+
+    --shadow-menu: 0 4px 16px rgba(0,0,0,0.5);
+    --shadow-menu-sm: 0 3px 12px rgba(0,0,0,0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Palette sourced from VS Code's "Dark Modern" theme — see the matching
+   * @media block above, which this mirrors exactly for the explicit-override case. */
+  --color-primary: #3794FF;
+  --color-primary-hover: #1C97EA;
+  --color-primary-light: #04395E;
+  --color-primary-dark: #9CDCFE;
+  --color-primary-border: #007FD4;
+
+  --color-danger: #F14C4C;
+  --color-danger-hover: #FF6B6B;
+  --color-danger-light: #5A1D1D;
+
+  --color-active: #4EC9B0;
+  --color-active-hover: #6FDFC4;
+  --color-active-light: #0E3B34;
+  --color-active-dark: #9CECD9;
+  --color-active-border: #1F5048;
+
+  --color-bg-0: #1E1E1E;
+  --color-bg-1: #252526;
+  --color-bg-2: #2D2D2D;
+  --color-bg-3: #333333;
+  --color-bg-4: #3C3C3C;
+  --color-bg-5: #454545;
+  --color-bg-menu-hover: #04395E;
+  --color-timeline-bg: #181818;
+  --color-menubar-bg: #323233;
+
+  --color-border: #3C3C3C;
+  --color-border-strong: #555555;
+
+  --color-text-1: #CCCCCC;
+  --color-text-2: #BBBBBB;
+  --color-text-3: #9D9D9D;
+  --color-text-muted: #8A8A8A;
+  --color-text-light: #797979;
+  --color-text-faint: #6A6A6A;
+  --color-text-placeholder: #767676;
+
+  --color-status-ok: #4EC9B0;
+  --color-status-warn: #CCA700;
+
+  --color-event: #569CD6;
+  --color-event-light: #1B2A3A;
+  --color-annotation: #4EC9B0;
+  --color-annotation-light: #0E3B34;
+  --color-viz: #B5CEA8;
+  --color-viz-light: #2B3B22;
+  --color-anchor: #CE9178;
+
+  --color-accent: #C586C0;
+
+  --color-tooltip-bg: #252526;
+  --color-tooltip-text: #CCCCCC;
+
+  --shadow-menu: 0 4px 16px rgba(0,0,0,0.5);
+  --shadow-menu-sm: 0 3px 12px rgba(0,0,0,0.5);
+}
+
+html, body {
+  background: var(--color-bg-1);
+  color: var(--color-text-1);
 }

@@ -296,14 +296,14 @@
     display: flex;
     gap: 0.4rem;
     padding: 0.3rem 0.5rem 0.4rem;
-    border-bottom: 1px solid var(--color-border, #ddd);
+    border-bottom: 1px solid var(--color-border, #ccc);
     flex-shrink: 0;
   }
   .bulk-btn {
     flex: 1;
     padding: 0.2rem 0.4rem;
     font-size: 0.72rem;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     border: 1px solid;
     background: none;
     cursor: pointer;
@@ -317,7 +317,7 @@
   /* ── Author group ────────────────────────────────────────────────────────── */
 
   .author-group {
-    border-bottom: 1px solid var(--color-border, #ddd);
+    border-bottom: 1px solid var(--color-border, #ccc);
   }
 
   .author-header {
@@ -326,7 +326,7 @@
     gap: 0.4rem;
     padding: 0.3rem 0.5rem 0.25rem;
     background: var(--color-bg-2, #f5f5f5);
-    border-bottom: 1px solid var(--color-border, #ddd);
+    border-bottom: 1px solid var(--color-border, #ccc);
     position: sticky;
     top: 0;
     z-index: 1;
@@ -343,7 +343,7 @@
   }
 
   .ai-badge {
-    color: var(--color-primary-dark, #1a5c8a);
+    color: var(--color-primary-dark, #1E7E9A);
   }
   .ai-badge::before {
     content: '✦ ';
@@ -353,8 +353,8 @@
 
   .author-count {
     font-size: 0.65rem;
-    color: var(--color-text-muted, #aaa);
-    background: var(--color-bg-3, #eee);
+    color: var(--color-text-muted, #999);
+    background: var(--color-bg-3, #f0f0f0);
     border-radius: 8px;
     padding: 0 5px;
     line-height: 1.5;
@@ -369,7 +369,7 @@
 
   .group-btn {
     padding: 0.05rem 0.35rem;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     border: 1px solid;
     background: none;
     cursor: pointer;
@@ -392,7 +392,7 @@
 
   .sug-item {
     padding: 0.3rem 0.5rem 0.22rem;
-    border-bottom: 1px solid var(--color-border, #e8e8e8);
+    border-bottom: 1px solid var(--color-border, #ccc);
     border-left: 3px solid transparent;
   }
   .sug-item.kind-add    { border-left-color: #86efac; }
@@ -415,7 +415,7 @@
 
   .sug-primary {
     font-size: 0.78rem;
-    color: var(--color-text-1, #333);
+    color: var(--color-text-1, #222);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -438,7 +438,7 @@
 
   .act-btn {
     padding: 0 0.28rem;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     border: 1px solid;
     background: none;
     cursor: pointer;
@@ -453,7 +453,7 @@
   .sug-note {
     margin: 0.12rem 0 0;
     font-size: 0.72rem;
-    color: var(--color-text-2, #555);
+    color: var(--color-text-2, #444);
     font-style: italic;
     white-space: pre-wrap;
     word-break: break-word;
@@ -463,6 +463,6 @@
   .sug-meta {
     margin: 0.08rem 0 0;
     font-size: 0.65rem;
-    color: var(--color-text-muted, #aaa);
+    color: var(--color-text-muted, #999);
   }
 </style>

@@ -249,7 +249,7 @@
     display: inline-block;
     width: 1px;
     height: 13px;
-    background: #ccc;
+    background: var(--color-border, #ccc);
     margin: 0 4px;
     flex-shrink: 0;
   }
@@ -261,7 +261,7 @@
   .tb-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 299;
+    z-index: var(--z-dropdown, 300);
     background: transparent;
     border: none;
     padding: 0;
@@ -272,10 +272,10 @@
     position: absolute;
     top: calc(100% + 3px);
     left: 0;
-    z-index: 300;
-    background: #fff;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+    z-index: calc(var(--z-dropdown, 300) + 1);
+    background: var(--color-bg-0, #fff);
+    border: 1px solid var(--color-border, #ccc);
+    border-radius: var(--radius-sm, 4px);
     box-shadow: 0 3px 10px rgba(0,0,0,0.12);
     display: flex;
     flex-wrap: wrap;
@@ -303,15 +303,15 @@
     justify-content: center;
     min-width: 30px;
     padding: 3px 5px;
-    border: 1px solid #e0e0e0;
-    border-radius: 3px;
-    background: #fafafa;
+    border: 1px solid var(--color-bg-5, #e0e0e0);
+    border-radius: var(--radius-xs, 3px);
+    background: var(--color-bg-1, #fafafa);
     font-size: 0.88em;
-    font-family: 'CMU Serif', Georgia, serif;
+    font-family: 'CMU Serif', 'Computer Modern', Georgia, serif;
     cursor: pointer;
-    color: #333;
+    color: var(--color-text-1, #333);
   }
-  .tb-char-btn:hover { background: #eef; border-color: #99b; }
+  .tb-char-btn:hover { background: #f0f0f0; border-color: #ccc; }
 
   .tb-insert-btn {
     display: flex;
@@ -320,49 +320,49 @@
     width: 100%;
     padding: 4px 8px;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     background: transparent;
     font-size: 0.82rem;
     font-family: inherit;
     text-align: left;
     cursor: pointer;
-    color: #333;
+    color: var(--color-text-1, #333);
   }
   .tb-insert-btn:hover { background: #f0f0f0; }
 
   .tb-insert-cmd {
     font-family: monospace;
     font-size: 0.8em;
-    color: #999;
+    color: var(--color-text-muted, #999);
     margin-left: 0.5em;
   }
 
   .tb-font-select {
     padding: 1px 4px;
-    border: 1px solid #d0d0d0;
-    border-radius: 3px;
-    background: #fff;
+    border: 1px solid var(--color-border, #d0d0d0);
+    border-radius: var(--radius-xs, 3px);
+    background: var(--color-bg-0, #fff);
     font-size: 0.72rem;
     font-family: inherit;
-    color: #444;
+    color: var(--color-text-2, #444);
     height: 22px;
     cursor: pointer;
     max-width: 130px;
   }
-  .tb-font-select:focus { outline: 1px solid var(--color-primary, #4a9eff); border-color: var(--color-primary, #4a9eff); }
+  .tb-font-select:focus { outline: 1px solid var(--color-primary, #5BBCD6); border-color: var(--color-primary, #5BBCD6); }
 
   .tb-fs-wrap {
     display: inline-flex;
     align-items: stretch;
-    border: 1px solid #d0d0d0;
-    border-radius: 3px;
-    background: #fff;
+    border: 1px solid var(--color-border, #d0d0d0);
+    border-radius: var(--radius-xs, 3px);
+    background: var(--color-bg-0, #fff);
     font-size: 0.72rem;
     font-family: inherit;
     overflow: hidden;
     height: 22px;
   }
-  .tb-fs-wrap:focus-within { border-color: var(--color-primary, #4a9eff); outline: 1px solid var(--color-primary, #4a9eff); }
+  .tb-fs-wrap:focus-within { border-color: var(--color-primary, #5BBCD6); outline: 1px solid var(--color-primary, #5BBCD6); }
   .tb-fs-input {
     width: 3.6rem;
     padding: 1px 4px;
@@ -370,7 +370,7 @@
     background: transparent;
     font-size: inherit;
     font-family: inherit;
-    color: #444;
+    color: var(--color-text-2, #444);
     font-variant-numeric: tabular-nums;
     outline: none;
   }
@@ -378,8 +378,8 @@
     position: relative;
     display: flex;
     align-items: center;
-    border-left: 1px solid #d0d0d0;
-    background: #f5f5f5;
+    border-left: 1px solid var(--color-border, #d0d0d0);
+    background: var(--color-bg-2, #f5f5f5);
     padding: 0 3px;
   }
   .tb-fs-select {
@@ -391,7 +391,7 @@
   }
   .tb-fs-chevron {
     font-size: 0.6rem;
-    color: #666;
+    color: var(--color-text-3, #666);
     pointer-events: none;
     line-height: 1;
   }

@@ -146,7 +146,7 @@
 
   .sym-table-wrap {
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
     overflow: auto;
     max-height: 400px;
   }
@@ -176,7 +176,7 @@
     width: 100%;
     padding: 0.25rem 0.4rem;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     font: inherit;
     font-size: var(--font-sm);
     background: var(--color-bg-0);
@@ -200,7 +200,7 @@
     font-family: monospace;
     background: var(--color-bg-1);
     padding: 0.1em 0.3em;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
   }
 
   /* align-items: center needed for the status message next to Cancel/Save */

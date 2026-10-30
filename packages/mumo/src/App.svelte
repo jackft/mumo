@@ -195,6 +195,28 @@
   let mediaPreservePitch  = $state(localStorage.getItem('mumolia:preservePitch') !== 'false')
   let keyBindings = $state<KeyBindings>(defaultBindings())
 
+  type Theme = 'auto' | 'light' | 'dark'
+  function _getStoredTheme(): Theme {
+    const t = localStorage.getItem('mumolia:theme')
+    return t === 'light' || t === 'dark' ? t : 'auto'
+  }
+  let theme = $state<Theme>(_getStoredTheme())
+  $effect(() => {
+    if (theme === 'auto') delete document.documentElement.dataset.theme
+    else document.documentElement.dataset.theme = theme
+  })
+
+  // Resolved light/dark (follows OS when theme === 'auto') for canvas-rendered colors
+  // (the timeline) that can't be reached by CSS custom properties.
+  let systemPrefersDark = $state(typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  $effect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e: MediaQueryListEvent) => { systemPrefersDark = e.matches }
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  })
+  const resolvedTheme = $derived<'light' | 'dark'>(theme === 'auto' ? (systemPrefersDark ? 'dark' : 'light') : theme)
+
   function _hasElectronPrefs(): boolean {
     return typeof window !== 'undefined' && 'electronAPI' in window &&
       typeof (window as Record<string, unknown> & { electronAPI?: Record<string, unknown> }).electronAPI?.['readPrefs'] === 'function'
@@ -3482,7 +3504,7 @@ function ctxEditUttTier() {
     if (s.underline)       td.push('underline')
     if (s.strikethrough)   td.push('line-through')
     if (td.length)         parts.push(`text-decoration:${td.join(' ')}`)
-    if (s.borderColor)     parts.push(`outline:1px solid ${s.borderColor};border-radius:2px`)
+    if (s.borderColor)     parts.push(`outline:1px solid ${s.borderColor};border-radius: var(--radius-2xs, 2px)`)
     return parts.join(';')
   }
 
@@ -5055,8 +5077,9 @@ function ctxEditUttTier() {
     {transcriptFont}
     userName={myAuthorId}
     preservePitch={mediaPreservePitch}
+    {theme}
     {keyBindings}
-    onconfirm={(prefs: { transcriptFont: string; userName: string; preservePitch: boolean; keyBindings: KeyBindings }) => {
+    onconfirm={(prefs: { transcriptFont: string; userName: string; preservePitch: boolean; theme: Theme; keyBindings: KeyBindings }) => {
       setTranscriptFont(prefs.transcriptFont)
       const patch: Parameters<typeof _saveAppPrefs>[0] = {}
       if (prefs.userName !== undefined) {
@@ -5070,6 +5093,10 @@ function ctxEditUttTier() {
         localStorage.setItem('mumolia:preservePitch', String(prefs.preservePitch))
         multiPlayer.setPreservePitch(prefs.preservePitch)
         patch.preservePitch = prefs.preservePitch
+      }
+      if (prefs.theme !== theme) {
+        theme = prefs.theme
+        localStorage.setItem('mumolia:theme', prefs.theme)
       }
       if (prefs.keyBindings) {
         keyBindings = prefs.keyBindings
@@ -5420,7 +5447,7 @@ function ctxEditUttTier() {
             <span class="mb-check" class:mb-checked={showGlosses}></span>Show glosses
           </button>
           <button onclick={() => { showUttTierNames = !showUttTierNames; setUttTiersVisible(showUttTierNames) }}>
-            <span class="mb-check" class:mb-checked={showUttTierNames}></span>Show utterance tier names
+            <span class="mb-check" class:mb-checked={showUttTierNames}></span>Show utt. tier names
           </button>
           <div class="mb-sub-wrap">
             <button>
@@ -5447,7 +5474,7 @@ function ctxEditUttTier() {
             </div>
           </div>
           <div class="mb-sub-wrap">
-            <button>Timestamps <span class="mb-arrow">▶</span></button>
+            <button><span class="mb-check mb-check-ghost"></span>Timestamps <span class="mb-arrow">▶</span></button>
             <div class="mb-sub-drop">
               <button onclick={() => { showStartTime = !showStartTime }}>
                 <span class="mb-check" class:mb-checked={showStartTime}></span>Start time
@@ -5466,7 +5493,7 @@ function ctxEditUttTier() {
           </div>
           <hr class="mb-sep" />
           <div class="mb-sub-wrap">
-            <button>Video <span class="mb-arrow">▶</span></button>
+            <button><span class="mb-check mb-check-ghost"></span>Video <span class="mb-arrow">▶</span></button>
             <div class="mb-sub-drop">
               <button onclick={() => { showVideoInfo = !showVideoInfo; openMenu = null }}>
                 <span class="mb-check" class:mb-checked={showVideoInfo}></span>Info
@@ -5474,7 +5501,7 @@ function ctxEditUttTier() {
             </div>
           </div>
           <hr class="mb-sep" />
-          <button onclick={() => { openMenu = null; _trackVizDlgOpen = true }}>Track visualization…</button>
+          <button onclick={() => { openMenu = null; _trackVizDlgOpen = true }}><span class="mb-check mb-check-ghost"></span>Video annotations…</button>
         </div>
       {/if}
     </div>
@@ -5894,6 +5921,7 @@ function ctxEditUttTier() {
     <Timeline
       bind:this={timelineRef}
       {timeKeeper}
+      theme={resolvedTheme}
       isPlaying={_isPlaying}
       onSeek={handleSeek}
       onSelectBar={handleSelectBar}
@@ -6517,7 +6545,7 @@ function ctxEditUttTier() {
 
 <style>
   :global(*, *::before, *::after) { box-sizing: border-box; margin: 0; padding: 0; }
-  :global(body) { font-family: system-ui, sans-serif; background: #fafafa; color: #222; }
+  :global(body) { font-family: system-ui, sans-serif; background: var(--color-bg-1, #fafafa); color: var(--color-text-1, #222); }
   .app {
     display: flex;
     flex-direction: column;
@@ -6530,8 +6558,8 @@ function ctxEditUttTier() {
     align-items: center;
     gap: 0;
     padding: 0 max(0.5rem, calc(100vw - env(titlebar-area-width, 100vw))) 0 0.5rem;
-    background: #fff;
-    border-bottom: 1px solid #e0e0e0;
+    background: var(--color-menubar-bg, #fff);
+    border-bottom: 1px solid var(--color-bg-5, #e0e0e0);
     flex-shrink: 0;
     height: 40px;
     -webkit-app-region: drag;
@@ -6562,17 +6590,17 @@ function ctxEditUttTier() {
   .mb-collection-btn {
     -webkit-app-region: no-drag;
     background: none;
-    border: 1px solid var(--color-border, #ddd);
-    border-radius: 3px;
+    border: 1px solid var(--color-border, #ccc);
+    border-radius: var(--radius-xs, 3px);
     padding: 2px 10px;
     font-size: var(--font-sm, 0.8rem);
     cursor: pointer;
-    color: var(--color-text-1, #333);
+    color: var(--color-text-1, #222);
     white-space: nowrap;
     margin-right: 6px;
   }
   .mb-collection-btn:hover {
-    background: var(--color-bg-1, #f5f5f5);
+    background: var(--color-bg-1, #fafafa);
     border-color: var(--color-text-muted, #999);
   }
 
@@ -6584,11 +6612,11 @@ function ctxEditUttTier() {
   .mb-btn {
     padding: 2px 8px;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     background: none;
     cursor: pointer;
     font-size: 0.82rem;
-    color: #333;
+    color: var(--color-text-1, #333);
     height: 22px;
     -webkit-app-region: no-drag;
   }
@@ -6682,7 +6710,7 @@ function ctxEditUttTier() {
     font-size: 0.82rem;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     width: 100%;
     color: var(--color-text-1);
   }
@@ -6691,7 +6719,7 @@ function ctxEditUttTier() {
   .mb-drop button:disabled:hover { background: none; }
 
   .mb-sep { border: none; border-top: 1px solid #eee; margin: 3px 0; }
-  .mb-kbd { font-size: 0.7rem; color: #999; font-family: monospace; }
+  .mb-kbd { font-size: 0.7rem; color: #999; font-family: monospace; margin-left: auto; padding-left: 12px; }
   .mb-check {
     width: 18px;
     flex-shrink: 0;
@@ -6707,10 +6735,11 @@ function ctxEditUttTier() {
     width: 12px;
     height: 12px;
     border: 1.5px solid #aaa;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     box-sizing: border-box;
     flex-shrink: 0;
   }
+  .mb-check.mb-check-ghost::before { visibility: hidden; }
   .mb-check.mb-checked::before {
     background: var(--color-primary);
     border-color: var(--color-primary);
@@ -6742,7 +6771,7 @@ function ctxEditUttTier() {
     z-index: 301;
   }
   .mb-sub-wrap:hover > .mb-sub-drop { display: flex; }
-  .mb-arrow { font-size: 9px; color: #999; }
+  .mb-arrow { font-size: 9px; color: #999; margin-left: auto; padding-left: 12px; }
 
   .mb-drop-right { left: auto; right: 0; }
   .mb-drop-help { min-width: 280px; padding: 6px 0; }
@@ -6761,7 +6790,7 @@ function ctxEditUttTier() {
     gap: 6px;
     padding: 2px 12px;
     font-size: 0.8rem;
-    color: #333;
+    color: var(--color-text-1, #333);
   }
   .mb-help-row kbd {
     display: inline-block;
@@ -6769,13 +6798,13 @@ function ctxEditUttTier() {
     font-size: 0.72rem;
     background: #f0f0f0;
     border: 1px solid #ccc;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 0 4px;
     line-height: 1.5;
     white-space: nowrap;
     flex-shrink: 0;
   }
-  .mb-help-row span { color: #444; }
+  .mb-help-row span { color: var(--color-text-2, #444); }
   .mb-help-note { font-size: 0.75rem; color: #999; font-style: italic; }
 
   /* base button rules come from base.css */
@@ -6812,7 +6841,7 @@ function ctxEditUttTier() {
     color: rgba(255,255,255,0.75);
     background: rgba(0,0,0,0.45);
     padding: 2px 6px 2px 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     cursor: pointer;
     user-select: none;
     z-index: 10;
@@ -6822,7 +6851,7 @@ function ctxEditUttTier() {
   .media-filename-bar {
     flex-shrink: 0;
     font-size: 0.65rem;
-    color: #666;
+    color: var(--color-text-3, #666);
     font-family: monospace;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -6871,6 +6900,7 @@ function ctxEditUttTier() {
     min-height: 0;
     display: flex;
     flex-direction: column;
+    background: var(--color-bg-0, #fff);
   }
 
   .editor-col-headers {
@@ -6879,8 +6909,8 @@ function ctxEditUttTier() {
     align-items: center;
     gap: 0.5rem;
     padding: 0.35rem 80px 0.25rem 0.25rem;
-    border-bottom: 1px solid #bbb;
-    background: #fafafa;
+    border-bottom: 1px solid var(--color-border-strong, #bbb);
+    background: var(--color-bg-1, #fafafa);
   }
 
   .editor-col-headers.hide-times  .ech-time       { display: none; }
@@ -6925,7 +6955,7 @@ function ctxEditUttTier() {
   .ech-mode-buttons {
     display: flex;
     border: 1px solid #ccc;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     overflow: hidden;
   }
 
@@ -6955,9 +6985,9 @@ function ctxEditUttTier() {
     display: flex;
     align-items: center;
   }
-  .ech-mode-opt + .ech-mode-opt { border-left: 1px solid #ccc; }
-  .ech-mode-opt:hover:not(.ech-mode-active) { color: #666; background: #f0f0f0; }
-  .ech-mode-opt.ech-mode-active { background: #e8e8e8; color: #333; cursor: default; box-shadow: inset 0 1px 3px rgba(0,0,0,0.18); }
+  .ech-mode-opt + .ech-mode-opt { border-left: 1px solid var(--color-border, #ccc); }
+  .ech-mode-opt:hover:not(.ech-mode-active) { color: var(--color-text-3, #666); background: var(--color-bg-3, #f0f0f0); }
+  .ech-mode-opt.ech-mode-active { background: var(--color-bg-4, #e8e8e8); color: var(--color-text-1, #333); cursor: default; box-shadow: inset 0 1px 3px rgba(0,0,0,0.18); }
   @keyframes ech-jiggle {
     0%   { transform: translateX(0); }
     20%  { transform: translateX(-5px); }
@@ -6981,6 +7011,8 @@ function ctxEditUttTier() {
     scrollbar-gutter: stable;
     position: relative;
     padding: 0.25rem 0 1.5rem 0.25rem;
+    background: var(--color-bg-0, #fff);
+    color: var(--color-text-1, #222);
   }
 
   .status-bar {
@@ -7029,15 +7061,15 @@ function ctxEditUttTier() {
     width: 100px;
     height: 5px;
     background: rgba(255,255,255,0.1);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     overflow: hidden;
     position: relative;
   }
   .status-spec-fill {
     display: block;
     height: 100%;
-    background: var(--color-primary, #0077cc);
-    border-radius: 3px;
+    background: var(--color-primary, #5BBCD6);
+    border-radius: var(--radius-xs, 3px);
     transition: width 0.15s ease;
   }
   .status-spec-indeterminate {
@@ -7045,8 +7077,8 @@ function ctxEditUttTier() {
     position: absolute;
     top: 0; bottom: 0;
     width: 40%;
-    background: var(--color-primary, #0077cc);
-    border-radius: 3px;
+    background: var(--color-primary, #5BBCD6);
+    border-radius: var(--radius-xs, 3px);
     animation: spec-indeterminate 1.2s ease-in-out infinite;
   }
   @keyframes spec-indeterminate {
@@ -7060,7 +7092,7 @@ function ctxEditUttTier() {
     border: none;
     border-radius: 0;
     background: transparent;
-    color: #666;
+    color: var(--color-text-3, #666);
     font-size: 0.68rem;
     font-family: inherit;
     cursor: pointer;
@@ -7084,7 +7116,7 @@ function ctxEditUttTier() {
     background: #fff;
     border: 1px solid #ccc;
     border-bottom: none;
-    border-radius: 6px 6px 0 0;
+    border-radius: var(--radius-md, 6px) 6px 0 0;
     box-shadow: 0 -4px 16px rgba(0,0,0,0.12);
     display: flex;
     flex-direction: column;
@@ -7096,11 +7128,11 @@ function ctxEditUttTier() {
     align-items: center;
     justify-content: space-between;
     padding: 0.35rem 0.75rem;
-    background: #f5f5f5;
-    border-bottom: 1px solid #ddd;
+    background: var(--color-bg-2, #f5f5f5);
+    border-bottom: 1px solid var(--color-border-strong, #ddd);
     font-size: 0.75rem;
     font-weight: 600;
-    color: #444;
+    color: var(--color-text-2, #444);
     flex-shrink: 0;
   }
 
@@ -7113,7 +7145,7 @@ function ctxEditUttTier() {
     font-size: 0.8rem;
     line-height: 1;
   }
-  .warn-close:hover { color: #444; }
+  .warn-close:hover { color: var(--color-text-2, #444); }
 
   .warn-empty {
     padding: 1.25rem 1rem;
@@ -7135,8 +7167,8 @@ function ctxEditUttTier() {
     gap: 0.5rem;
     padding: 0.3rem 0.75rem;
     font-size: 0.78rem;
-    border-bottom: 1px solid #f0f0f0;
-    color: #333;
+    border-bottom: 1px solid var(--color-bg-3, #f0f0f0);
+    color: var(--color-text-1, #333);
   }
   .warn-item:last-child { border-bottom: none; }
 
@@ -7147,7 +7179,7 @@ function ctxEditUttTier() {
     text-transform: uppercase;
     letter-spacing: 0.05em;
     padding: 0.1rem 0.35rem;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     background: #f0e8d0;
     color: #a06000;
   }
@@ -7162,8 +7194,8 @@ function ctxEditUttTier() {
     flex-shrink: 0;
     height: 5px;
     cursor: row-resize;
-    background: #d8d8d8;
-    border-top: 1px solid #c8c8c8;
+    background: var(--color-bg-5, #d8d8d8);
+    border-top: 1px solid var(--color-border-strong, #c8c8c8);
     box-shadow: 0 2px 4px rgba(0,0,0,0.10);
     transition: background 0.15s;
   }
@@ -7176,7 +7208,7 @@ function ctxEditUttTier() {
     flex-shrink: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    background: #efefef;
+    background: var(--color-timeline-bg, #efefef);
     box-shadow: inset 0 4px 8px -4px rgba(0,0,0,0.12);
   }
 
@@ -7188,7 +7220,7 @@ function ctxEditUttTier() {
     font-family: monospace;
     font-size: 11px;
     font-weight: 600;
-    color: #222;
+    color: var(--color-text-2, #444);
     letter-spacing: 0.03em;
     user-select: text;
     cursor: text;
@@ -7197,7 +7229,7 @@ function ctxEditUttTier() {
 
   .tl-timecode-copyable {
     cursor: copy;
-    border-radius: 2px;
+    border-radius: var(--radius-2xs, 2px);
   }
 
   .tl-timecode-copyable:hover {
@@ -7251,14 +7283,14 @@ function ctxEditUttTier() {
   }
   .snap-menu-item:hover { background: var(--color-bg-menu-hover); }
   .snap-menu-item-active { color: var(--color-active-dark); font-weight: 600; }
-  .snap-menu-divider { border-top: 1px solid var(--color-border, #eee); margin: 3px 0; }
+  .snap-menu-divider { border-top: 1px solid var(--color-border, #ccc); margin: 3px 0; }
 
   .status-snap {
     font-variant-numeric: tabular-nums;
     font-size: 0.68rem;
-    color: var(--color-active, #0077cc);
+    color: var(--color-active, #00A08A);
   }
-  .status-snap-off { color: #666; }
+  .status-snap-off { color: var(--color-text-faint, #666); }
   .status-snap-ann { color: #e8c97a; }
 
   .tl-tool-row {
@@ -7270,11 +7302,11 @@ function ctxEditUttTier() {
   .tl-tool-btn {
     background: none;
     border: 1px solid transparent;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 2px 5px;
     cursor: pointer;
     font-size: 13px;
-    color: #555;
+    color: var(--color-text-2, #555);
     line-height: 1;
   }
   .tl-tool-btn:hover:not(:disabled) { background: var(--color-bg-4); border-color: var(--color-border); }
@@ -7317,7 +7349,7 @@ function ctxEditUttTier() {
   .tl-gear-player-header {
     padding: 4px 10px 1px;
     font-size: 10px; font-weight: 600;
-    color: var(--color-text-2, #666);
+    color: var(--color-text-2, #444);
     user-select: none;
   }
 
@@ -7350,7 +7382,7 @@ function ctxEditUttTier() {
     color: inherit;
     font: inherit;
   }
-  .tl-gear-preset-active { font-weight: 600; color: var(--color-primary, #0077cc); }
+  .tl-gear-preset-active { font-weight: 600; color: var(--color-primary, #5BBCD6); }
 
 
 /* Spectrogram settings modal */
@@ -7367,8 +7399,8 @@ function ctxEditUttTier() {
     transform: translateX(-50%);
     z-index: 201;
     background: var(--color-bg-0, #fff);
-    border: 1px solid var(--color-border, #d0d0d0);
-    border-radius: 6px;
+    border: 1px solid var(--color-border, #ccc);
+    border-radius: var(--radius-md, 6px);
     box-shadow: 0 8px 32px rgba(0,0,0,0.18);
     min-width: 280px;
     font-size: 13px;
@@ -7378,7 +7410,7 @@ function ctxEditUttTier() {
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    border-bottom: 1px solid var(--color-border, #e0e0e0);
+    border-bottom: 1px solid var(--color-border, #ccc);
     font-weight: 600;
     cursor: move;
     user-select: none;
@@ -7391,7 +7423,7 @@ function ctxEditUttTier() {
     color: #888;
     padding: 2px 4px;
   }
-  .spec-modal-close:hover { color: #333; }
+  .spec-modal-close:hover { color: var(--color-text-1, #333); }
   .spec-modal-tabs {
     display: flex;
     background: #e8e8e8;
@@ -7411,10 +7443,10 @@ function ctxEditUttTier() {
     cursor: pointer;
     white-space: nowrap;
   }
-  .spec-modal-tab:hover { color: #555; background: #f5f5f5; }
+  .spec-modal-tab:hover { color: var(--color-text-2, #555); background: var(--color-bg-2, #f5f5f5); }
   .spec-modal-tab-active {
-    color: var(--color-primary, #0077cc);
-    border-bottom-color: var(--color-primary, #0077cc);
+    color: var(--color-primary, #5BBCD6);
+    border-bottom-color: var(--color-primary, #5BBCD6);
     background: #fff;
     font-weight: 600;
   }
@@ -7435,7 +7467,7 @@ function ctxEditUttTier() {
     text-align: left;
     background: none;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
     padding: 5px 8px;
     font: inherit;
     font-size: 13px;
@@ -7452,7 +7484,7 @@ function ctxEditUttTier() {
     flex-shrink: 0;
     position: relative;
   }
-  .spec-radio.on { border-color: var(--color-primary, #0077cc); }
+  .spec-radio.on { border-color: var(--color-primary, #5BBCD6); }
   .spec-radio.on::after {
     content: '';
     position: absolute;
@@ -7461,7 +7493,7 @@ function ctxEditUttTier() {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--color-primary, #0077cc);
+    background: var(--color-primary, #5BBCD6);
     transform: translate(-50%, -50%);
   }
   .spec-modal-section-label {
@@ -7473,7 +7505,7 @@ function ctxEditUttTier() {
     margin-bottom: 2px;
   }
   .spec-modal-divider {
-    border-top: 1px solid var(--color-border, #e8e8e8);
+    border-top: 1px solid var(--color-border, #ccc);
     margin: 4px 0;
   }
   .spec-modal-row {
@@ -7483,7 +7515,7 @@ function ctxEditUttTier() {
   }
   .spec-modal-label {
     width: 110px;
-    color: #666;
+    color: var(--color-text-3, #666);
     flex-shrink: 0;
     font-size: 12px;
   }
@@ -7494,7 +7526,7 @@ function ctxEditUttTier() {
     font-size: 12px;
     padding: 3px 5px;
     border: 1px solid var(--color-border, #ccc);
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
     background: var(--color-bg-0, #fff);
     color: inherit;
   }
@@ -7503,13 +7535,13 @@ function ctxEditUttTier() {
     display: inline-flex;
     align-items: stretch;
     border: 1px solid var(--color-border, #ccc);
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
     background: var(--color-bg-0, #fff);
     font-size: 12px;
     overflow: hidden;
     height: 24px;
   }
-  .spec-combo-wrap:focus-within { border-color: var(--color-primary, #4a9eff); outline: 1px solid var(--color-primary, #4a9eff); }
+  .spec-combo-wrap:focus-within { border-color: var(--color-primary, #5BBCD6); outline: 1px solid var(--color-primary, #5BBCD6); }
   .spec-combo-input {
     flex: 1;
     min-width: 0;
@@ -7539,7 +7571,7 @@ function ctxEditUttTier() {
   }
   .spec-combo-chevron {
     font-size: 0.6rem;
-    color: #666;
+    color: var(--color-text-3, #666);
     pointer-events: none;
     line-height: 1;
   }
@@ -7548,8 +7580,8 @@ function ctxEditUttTier() {
     flex-shrink: 0;
     width: 5px;
     cursor: col-resize;
-    background: #d8d8d8;
-    border-left: 1px solid #c8c8c8;
+    background: var(--color-bg-5, #d8d8d8);
+    border-left: 1px solid var(--color-border-strong, #c8c8c8);
     box-shadow: -2px 0 4px rgba(0,0,0,0.10);
     transition: background 0.15s;
     position: relative;
@@ -7724,7 +7756,7 @@ function ctxEditUttTier() {
     font-size: 0.78rem;
     padding: 2px 4px;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     background: var(--color-bg);
     color: var(--color-text);
     min-width: 0;
@@ -7746,7 +7778,7 @@ function ctxEditUttTier() {
     position: fixed;
     z-index: 500;
     background: var(--color-bg-0, #fff);
-    border: 1px solid var(--color-border, #ddd);
+    border: 1px solid var(--color-border, #ccc);
     border-radius: var(--radius-md, 4px);
     box-shadow: var(--shadow-menu-sm, 0 2px 8px rgba(0,0,0,0.15));
     padding: 3px 0;
@@ -7769,13 +7801,13 @@ function ctxEditUttTier() {
     line-height: 1.5;
     flex-shrink: 0;
   }
-  .sug-check { color: var(--color-active-dark, #15803d); border-color: var(--color-active, #16a34a); }
-  .sug-check:hover { background: var(--color-active-light, #dcfce7); }
-  .sug-x { color: var(--color-danger, #b91c1c); border-color: var(--color-danger, #b91c1c); }
-  .sug-x:hover { background: var(--color-danger-light, #fee2e2); }
+  .sug-check { color: var(--color-active-dark, #15803d); border-color: var(--color-active, #00A08A); }
+  .sug-check:hover { background: var(--color-active-light, #E0F5F2); }
+  .sug-x { color: var(--color-danger, #FF0000); border-color: var(--color-danger, #FF0000); }
+  .sug-x:hover { background: var(--color-danger-light, #FFE8E8); }
   .sug-comment {
     font-size: 0.82rem;
-    color: var(--color-text-1, #555);
+    color: var(--color-text-1, #222);
     padding: 0 0.25rem;
     max-width: 240px;
     overflow: hidden;

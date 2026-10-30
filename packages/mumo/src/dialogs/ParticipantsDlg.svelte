@@ -348,7 +348,7 @@
     gap: 0.4rem;
     padding: 0.5rem 1rem;
     border-bottom: 1px solid var(--color-border, #ccc);
-    background: var(--color-bg-1, #f8f8f8);
+    background: var(--color-bg-1, #fafafa);
     flex-shrink: 0;
   }
 
@@ -367,7 +367,7 @@
     align-items: center;
     gap: 3px;
     padding: 0.15rem 0.4rem 0.15rem 0.55rem;
-    background: var(--color-bg-3, #e8e8e8);
+    background: var(--color-bg-3, #f0f0f0);
     border: 1px solid var(--color-border, #ccc);
     border-radius: var(--radius-xs);
     font-size: 0.8rem;
@@ -377,7 +377,7 @@
   .attr-key-input {
     padding: 0.2rem 0.4rem;
     border: 1px solid var(--color-border, #ccc);
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
     font-size: 0.82rem;
     font-family: inherit;
     width: 9rem;

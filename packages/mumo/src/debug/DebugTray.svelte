@@ -345,7 +345,7 @@
     border: 1px solid #444;
     color: #ccc;
     padding: 2px 8px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     cursor: pointer;
     font-size: 11px;
     font-family: monospace;
@@ -363,7 +363,7 @@
     gap: 12px;
   }
 
-  .dt-empty { color: #666; font-style: italic; }
+  .dt-empty { color: var(--color-text-3, #666); font-style: italic; }
 
   .dt-player { display: flex; flex-direction: column; gap: 6px; }
 

@@ -63,16 +63,16 @@
 
 <style>
   .popover-backdrop {
-    position: fixed; inset: 0; z-index: 400;
+    position: fixed; inset: 0; z-index: var(--z-popover, 500);
     background: transparent; border: none; padding: 0; cursor: default;
   }
 
   .ann-popover {
     position: fixed;
-    z-index: 401;
-    background: #fff;
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    border-radius: 8px;
+    z-index: calc(var(--z-popover, 500) + 1);
+    background: var(--color-bg-0, #fff);
+    border: 1px solid var(--color-border-strong, rgba(0, 0, 0, 0.15));
+    border-radius: var(--radius-lg, 8px);
     box-shadow:
       0 8px 32px rgba(0, 0, 0, 0.18),
       0 2px 8px rgba(0, 0, 0, 0.1);
@@ -89,9 +89,9 @@
     transform: translateX(-50%) rotate(45deg);
     width: 8px;
     height: 8px;
-    background: #fff;
-    border-right: 1px solid rgba(0, 0, 0, 0.15);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+    background: var(--color-bg-0, #fff);
+    border-right: 1px solid var(--color-border-strong, rgba(0, 0, 0, 0.15));
+    border-bottom: 1px solid var(--color-border-strong, rgba(0, 0, 0, 0.15));
   }
 
   .ann-popover input {
@@ -100,25 +100,25 @@
     background: transparent;
     border: none;
     outline: none;
-    color: #111;
+    color: var(--color-text-1, #111);
     font-size: 0.9rem;
     font-family: inherit;
     box-sizing: border-box;
-    caret-color: #111;
+    caret-color: var(--color-text-1, #111);
   }
 
   .ann-popover input::placeholder {
-    color: #aaa;
+    color: var(--color-text-placeholder, #aaa);
     font-style: italic;
   }
 
   .ann-popover select {
     width: 100%;
     padding: 0.4rem 0.6rem;
-    background: #fff;
-    border: 1px solid #ccc;
+    background: var(--color-bg-0, #fff);
+    border: 1px solid var(--color-border, #ccc);
     border-radius: 5px;
-    color: #111;
+    color: var(--color-text-1, #111);
     font-size: 0.9rem;
     font-family: inherit;
     cursor: pointer;

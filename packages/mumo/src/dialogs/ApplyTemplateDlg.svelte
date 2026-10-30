@@ -165,7 +165,7 @@
     grid-row: 1;
     grid-column: 2;
     font-family: monospace;
-    color: #222;
+    color: var(--color-text-1, #222);
   }
   .atd-conflict-reason {
     grid-row: 2;
@@ -216,7 +216,7 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 1px 5px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     margin-top: 1px;
   }
   .atd-badge-add   { background: #d1fae5; color: #065f46; }
@@ -228,7 +228,7 @@
     gap: 0.15rem;
     min-width: 0;
   }
-  .atd-item-name   { font-family: monospace; color: #222; word-break: break-all; }
+  .atd-item-name   { font-family: monospace; color: var(--color-text-1, #222); word-break: break-all; }
   .atd-item-detail { font-size: 0.78rem; color: var(--color-text-muted); }
 
   .atd-additions {
@@ -241,7 +241,7 @@
     font-size: 0.75rem;
     background: #eff6ff;
     border: 1px solid #bfdbfe;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 1px 5px;
     color: #1e40af;
     font-family: monospace;

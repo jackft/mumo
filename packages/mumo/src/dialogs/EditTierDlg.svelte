@@ -58,11 +58,11 @@
   .name-error {
     margin: 2px 0 0;
     font-size: 0.78rem;
-    color: var(--color-danger, #c0392b);
+    color: var(--color-danger, #FF0000);
   }
   .name-preview {
     margin: 2px 0 0;
     font-size: 0.78rem;
-    color: var(--color-text-2, #777);
+    color: var(--color-text-2, #444);
   }
 </style>

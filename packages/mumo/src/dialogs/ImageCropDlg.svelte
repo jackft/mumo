@@ -237,7 +237,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.7);
-    z-index: 1000;
+    z-index: var(--z-modal, 2000);
     border: none;
     padding: 0;
     cursor: default;
@@ -247,12 +247,12 @@
     flex-direction: column;
     gap: 10px;
     background: #1e1e1e;
-    border-radius: 6px;
+    border-radius: var(--radius-md, 6px);
     padding: 16px;
     max-width: 90vw;
     max-height: 90vh;
     position: fixed;
-    z-index: 1001;
+    z-index: calc(var(--z-modal, 2000) + 1);
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
@@ -277,7 +277,7 @@
   }
   .crop-btn {
     padding: 4px 14px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
     border: none;
     cursor: pointer;
     font-size: 0.85em;

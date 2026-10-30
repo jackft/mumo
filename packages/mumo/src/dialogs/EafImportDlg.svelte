@@ -433,9 +433,9 @@
   .tier-count { color: #999; }
 
   .radio-label { display: flex; align-items: center; gap: 3px; cursor: pointer; white-space: nowrap; font-size: var(--font-sm); }
-  .link-select { font-size: 0.82rem; border: 1px solid var(--color-border); border-radius: 3px; padding: 1px 4px; cursor: pointer; max-width: 200px; }
+  .link-select { font-size: 0.82rem; border: 1px solid var(--color-border); border-radius: var(--radius-xs, 3px); padding: 1px 4px; cursor: pointer; max-width: 200px; }
 
-  .match-badge { font-size: 0.72rem; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
+  .match-badge { font-size: 0.72rem; padding: 1px 6px; border-radius: var(--radius-xs, 3px); white-space: nowrap; }
   .match-match    { background: #d4edda; color: #155724; }
   .match-partial  { background: #fff3cd; color: #856404; }
   .match-no-match { background: #f8d7da; color: #721c24; }
@@ -448,9 +448,9 @@
     border-top: 1px solid var(--color-bg-3);
     font-size: 0.78rem;
   }
-  .tok-sub-label { color: #666; font-weight: 500; flex-shrink: 0; }
+  .tok-sub-label { color: var(--color-text-3, #666); font-weight: 500; flex-shrink: 0; }
   .tok-sub-sep   { margin-left: 0.5rem; }
-  .small-input   { width: 48px; padding: 2px 4px; border: 1px solid var(--color-border); border-radius: 3px; font-size: 0.82rem; font-family: monospace; }
-  .punct-input-sm { width: 120px; padding: 2px 6px; border: 1px solid var(--color-border); border-radius: 3px; font-size: 0.82rem; font-family: monospace; }
+  .small-input   { width: 48px; padding: 2px 4px; border: 1px solid var(--color-border); border-radius: var(--radius-xs, 3px); font-size: 0.82rem; font-family: monospace; }
+  .punct-input-sm { width: 120px; padding: 2px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-xs, 3px); font-size: 0.82rem; font-family: monospace; }
   .small-input:disabled { opacity: 0.4; }
 </style>

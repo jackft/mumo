@@ -188,30 +188,30 @@
     align-items: center;
     justify-content: space-between;
     padding: 6px 10px;
-    border-bottom: 1px solid var(--color-border, #ddd);
+    border-bottom: 1px solid var(--color-border, #ccc);
     flex-shrink: 0;
   }
 
   .bookmarks-count {
     font-size: 0.72rem;
-    color: var(--color-text-muted, #888);
+    color: var(--color-text-muted, #999);
   }
 
   .new-btn {
     background: none;
-    border: 1px solid var(--color-border, #ddd);
-    border-radius: 3px;
+    border: 1px solid var(--color-border, #ccc);
+    border-radius: var(--radius-xs, 3px);
     padding: 2px 8px;
     font-size: 0.75rem;
     cursor: pointer;
-    color: var(--color-text-1, #333);
+    color: var(--color-text-1, #222);
   }
-  .new-btn:hover { background: var(--color-bg-2, #f0f0f0); }
+  .new-btn:hover { background: var(--color-bg-2, #f5f5f5); }
 
   .bookmarks-empty {
     padding: 1.5rem 1rem;
     font-size: 0.8rem;
-    color: var(--color-text-muted, #888);
+    color: var(--color-text-muted, #999);
     text-align: center;
     font-style: italic;
   }
@@ -226,28 +226,28 @@
     align-items: flex-start;
     gap: 4px;
     padding: 5px 8px;
-    border-bottom: 1px solid var(--color-border, #eee);
+    border-bottom: 1px solid var(--color-border, #ccc);
   }
-  .bookmark-row:hover { background: var(--color-bg-1, #f9f9f9); }
+  .bookmark-row:hover { background: var(--color-bg-1, #fafafa); }
 
   .bookmark-seek-btn {
     background: none;
     border: none;
     cursor: pointer;
-    color: var(--color-text-muted, #aaa);
+    color: var(--color-text-muted, #999);
     font-size: 0.65rem;
     padding: 3px 2px;
     flex-shrink: 0;
     line-height: 1;
     margin-top: 1px;
   }
-  .bookmark-seek-btn:hover { color: var(--color-primary, #4a90d9); }
+  .bookmark-seek-btn:hover { color: var(--color-primary, #5BBCD6); }
 
   .bookmark-coll-btn {
     background: none;
     border: none;
     cursor: pointer;
-    color: var(--color-text-muted, #aaa);
+    color: var(--color-text-muted, #999);
     font-size: 0.8rem;
     padding: 2px 3px;
     flex-shrink: 0;
@@ -256,7 +256,7 @@
     transition: opacity 0.1s;
   }
   .bookmark-row:hover .bookmark-coll-btn { opacity: 1; }
-  .bookmark-coll-btn:hover { color: var(--color-primary, #4a90d9); }
+  .bookmark-coll-btn:hover { color: var(--color-primary, #5BBCD6); }
 
   .bookmark-info {
     flex: 1;
@@ -270,32 +270,32 @@
   .bookmark-label {
     font-size: 0.82rem;
     font-weight: 500;
-    color: var(--color-text-1, #333);
+    color: var(--color-text-1, #222);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .bookmark-info:hover .bookmark-label { color: var(--color-primary, #4a90d9); }
+  .bookmark-info:hover .bookmark-label { color: var(--color-primary, #5BBCD6); }
 
   .bookmark-time {
     font-size: 0.7rem;
-    color: var(--color-text-muted, #888);
+    color: var(--color-text-muted, #999);
     font-variant-numeric: tabular-nums;
   }
   .bookmark-time em { font-style: normal; }
 
   .bookmark-code {
     font-size: 0.7rem;
-    background: var(--color-primary-dim, #e8f0fb);
-    color: var(--color-primary, #4a90d9);
-    border-radius: 2px;
+    background: var(--color-primary-light);
+    color: var(--color-primary, #5BBCD6);
+    border-radius: var(--radius-2xs, 2px);
     padding: 0 4px;
     align-self: flex-start;
   }
 
   .bookmark-note {
     font-size: 0.72rem;
-    color: var(--color-text-muted, #888);
+    color: var(--color-text-muted, #999);
     font-style: italic;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -307,11 +307,11 @@
   .bookmark-create-form,
   .bookmark-edit-form {
     padding: 8px 10px;
-    border-bottom: 1px solid var(--color-border, #ddd);
+    border-bottom: 1px solid var(--color-border, #ccc);
     display: flex;
     flex-direction: column;
     gap: 5px;
-    background: var(--color-bg-1, #f9f9f9);
+    background: var(--color-bg-1, #fafafa);
     flex-shrink: 0;
   }
 
@@ -319,31 +319,31 @@
     width: 100%;
     box-sizing: border-box;
     padding: 4px 6px;
-    border: 1px solid var(--color-border, #ddd);
-    border-radius: 3px;
+    border: 1px solid var(--color-border, #ccc);
+    border-radius: var(--radius-xs, 3px);
     font-size: 0.8rem;
     background: var(--color-bg-0, #fff);
-    color: var(--color-text-1, #333);
+    color: var(--color-text-1, #222);
     font-family: inherit;
   }
-  .field-input:focus { outline: 2px solid var(--color-primary, #4a90d9); outline-offset: -1px; border-color: transparent; }
+  .field-input:focus { outline: 2px solid var(--color-primary, #5BBCD6); outline-offset: -1px; border-color: transparent; }
 
   .time-row {
     display: flex;
     gap: 8px;
     font-size: 0.75rem;
-    color: var(--color-text-muted, #888);
+    color: var(--color-text-muted, #999);
   }
   .time-row label { display: flex; align-items: center; gap: 4px; flex: 1; }
 
   .time-input {
     flex: 1;
     padding: 3px 5px;
-    border: 1px solid var(--color-border, #ddd);
-    border-radius: 3px;
+    border: 1px solid var(--color-border, #ccc);
+    border-radius: var(--radius-xs, 3px);
     font-size: 0.75rem;
     background: var(--color-bg-0, #fff);
-    color: var(--color-text-1, #333);
+    color: var(--color-text-1, #222);
     min-width: 0;
   }
 
@@ -355,17 +355,17 @@
   }
 
   .btn-save, .btn-cancel, .btn-delete {
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 3px 10px;
     font-size: 0.75rem;
     cursor: pointer;
-    border: 1px solid var(--color-border, #ddd);
+    border: 1px solid var(--color-border, #ccc);
   }
-  .btn-save { background: var(--color-primary, #4a90d9); color: #fff; border-color: var(--color-primary, #4a90d9); }
+  .btn-save { background: var(--color-primary, #5BBCD6); color: #fff; border-color: var(--color-primary, #5BBCD6); }
   .btn-save:disabled { opacity: 0.5; cursor: default; }
   .btn-save:not(:disabled):hover { filter: brightness(1.1); }
-  .btn-cancel { background: none; color: var(--color-text-muted, #888); }
-  .btn-cancel:hover { background: var(--color-bg-2, #f0f0f0); }
-  .btn-delete { background: none; color: var(--color-danger, #e74c3c); border-color: transparent; margin-right: auto; }
-  .btn-delete:hover { background: color-mix(in srgb, var(--color-danger, #e74c3c) 10%, transparent); }
+  .btn-cancel { background: none; color: var(--color-text-muted, #999); }
+  .btn-cancel:hover { background: var(--color-bg-2, #f5f5f5); }
+  .btn-delete { background: none; color: var(--color-danger, #FF0000); border-color: transparent; margin-right: auto; }
+  .btn-delete:hover { background: color-mix(in srgb, var(--color-danger, #FF0000) 10%, transparent); }
 </style>
