@@ -392,7 +392,7 @@ export class UtteranceNodeView implements NodeView {
 
     const menu = document.createElement('div')
     menu.className = 'utt-ctx-menu'
-    menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:9999`
+    menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:var(--z-context-menu, 9000)`
 
     const header = document.createElement('div')
     header.className = 'utt-ctx-header'
@@ -458,7 +458,7 @@ export class UtteranceNodeView implements NodeView {
 
       const submenu = document.createElement('div')
       submenu.className = 'utt-ctx-menu utt-ctx-submenu'
-      submenu.style.cssText = 'position:fixed;z-index:10000;display:none'
+      submenu.style.cssText = 'position:fixed;z-index:calc(var(--z-context-menu, 9000) + 1);display:none'
 
       // Options: "Participant default" (clears the override) + one per channel.
       const participant = (this.node.attrs.participant as string | null) ?? ''

@@ -11,12 +11,14 @@
   import { defaultSnapPlugins } from './snapPlugins.js'
   import { LinearScale } from './scales.js'
   import { pickTickInterval, pickSubInterval, formatRulerTime, pickHzInterval, formatHz } from './ruler.js'
-  import { palette } from './palette.js'
+  import { palette, applyPaletteTheme } from './palette.js'
 
   // Props
 
   interface Props {
     timeKeeper?: TimeKeeper
+    /** Resolved color theme for canvas-rendered colors (bars, waveform, ruler, ...). Default: 'light' */
+    theme?: 'light' | 'dark'
     isPlaying?: boolean
     onSeek?: (t: number) => void
     onSelectBar?: (nodeId: string | null) => void
@@ -45,6 +47,7 @@
 
   let {
     timeKeeper,
+    theme = 'light',
     isPlaying = false,
     onSeek,
     onSelectBar,
@@ -70,6 +73,19 @@
     onHzChange,
     snapPlugins = defaultSnapPlugins,
   }: Props = $props()
+
+  $effect(() => {
+    applyPaletteTheme(theme)
+    ANN_BAR_COLOR = palette.annotation
+    styleRuler.fill = palette.textMid
+    styleHz.fill = palette.textLight
+    styleTier.fill = palette.textDark
+    styleTierName.fill = palette.textFaint
+    if (app) {
+      app.renderer.background.color = palette.tlBg
+      render()
+    }
+  })
 
   // DOM + PIXI
 
@@ -375,14 +391,16 @@
   const INDENT_PX       = 10   // px per indent level in lane panel
   const TIER_STRIP_H    = 20   // height per TextGrid tier overlay strip
 
-  const ANN_BAR_COLOR = palette.annotation
+  // Theme-dependent; kept current by the $effect above (applyPaletteTheme + these reads happen first).
+  let ANN_BAR_COLOR = palette.annotation
 
-  const styleRuler = new PIXI.TextStyle({ fontSize: 9,  fill: '#444', fontFamily: 'system-ui, sans-serif' })
-  const styleBar   = new PIXI.TextStyle({ fontSize: 10, fill: '#000', fontFamily: 'system-ui, sans-serif' })
-  const styleWord  = new PIXI.TextStyle({ fontSize: 8,  fill: '#000', fontFamily: 'system-ui, sans-serif' })
-  const styleHz    = new PIXI.TextStyle({ fontSize: 8,  fill: '#888', fontFamily: 'system-ui, sans-serif' })
-  const styleTier  = new PIXI.TextStyle({ fontSize: 9,  fill: '#333', fontFamily: 'system-ui, sans-serif' })
-  const styleTierName = new PIXI.TextStyle({ fontSize: 8, fill: '#999', fontFamily: 'system-ui, sans-serif', fontStyle: 'italic' })
+  // fill values are set from the palette (not hardcoded) so these re-theme along with everything else.
+  const styleRuler = new PIXI.TextStyle({ fontSize: 9,  fill: palette.textMid,   fontFamily: 'system-ui, sans-serif' })
+  const styleBar   = new PIXI.TextStyle({ fontSize: 10, fill: '#000', fontFamily: 'system-ui, sans-serif' })  // sits on a colored bar chip, not the canvas bg
+  const styleWord  = new PIXI.TextStyle({ fontSize: 8,  fill: '#000', fontFamily: 'system-ui, sans-serif' })  // sits on a colored bar chip, not the canvas bg
+  const styleHz    = new PIXI.TextStyle({ fontSize: 8,  fill: palette.textLight, fontFamily: 'system-ui, sans-serif' })
+  const styleTier  = new PIXI.TextStyle({ fontSize: 9,  fill: palette.textDark,  fontFamily: 'system-ui, sans-serif' })
+  const styleTierName = new PIXI.TextStyle({ fontSize: 8, fill: palette.textFaint, fontFamily: 'system-ui, sans-serif', fontStyle: 'italic' })
 
   // Layout helpers
 
@@ -954,7 +972,7 @@
     _sumIdx = 0
 
     summaryGfx.clear()
-    summaryGfx.rect(0, summaryRulerY, w, SUMMARY_RULER_H).fill(palette.bg2)
+    summaryGfx.rect(0, summaryRulerY, w, SUMMARY_RULER_H).fill(palette.tlBg)
     summaryGfx.rect(0, summaryBarsY(), w, SUMMARY_H).fill(palette.bg4)
     summaryGfx.moveTo(0, SUMMARY_RULER_H + SUMMARY_H).lineTo(w, SUMMARY_RULER_H + SUMMARY_H).stroke({ width: 1, color: palette.border })
 
@@ -1295,7 +1313,7 @@
     _rulerIdx = 0
 
     rulerGfx.clear()
-    rulerGfx.rect(0, ry, w, RULER_H).fill(palette.bg2)
+    rulerGfx.rect(0, ry, w, RULER_H).fill(palette.tlBg)
     rulerGfx.moveTo(0, ry + RULER_H - 1).lineTo(w, ry + RULER_H - 1).stroke({ width: 1, color: palette.bg5 })
     renderRuler(rulerGfx, (text, x, y) => {
       _rulerIdx = _poolLabel(_rulerPool, rulerLabelContainer, _rulerIdx, text, x, y, styleRuler)
@@ -1317,7 +1335,7 @@
       if (isGroupStart) {
         laneGfx.moveTo(0, lo.y).lineTo(w, lo.y).stroke({ width: 1.5, color: palette.separator })
       }
-      const bg = laneIdx % 2 === 0 ? palette.bg0 : palette.bg5
+      const bg = laneIdx % 2 === 0 ? palette.tlBg : palette.bg3
       laneGfx.rect(0, lo.y, w, lo.height).fill(lane.type === 'token' ? { color: bg, alpha: 0.5 } : bg)
       laneIdx++
     }
@@ -2569,11 +2587,12 @@
   // Lifecycle
 
   onMount(async () => {
+    applyPaletteTheme(theme)  // ensure palette is correct before the renderer reads it below
     const _app = new PIXI.Application()
     await _app.init({
       width: wrapEl.clientWidth,
       height: canvasHeight(),
-      background: palette.bg2,
+      background: palette.tlBg,
       antialias: true,
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
@@ -2804,7 +2823,9 @@
 
   function panelBadgeColor(lane: Lane): string {
     if (lane.color) return `#${lane.color.toString(16).padStart(6, '0')}`
-    return lane.type === 'annotation' ? `#${palette.annotation.toString(16)}` : `#${palette.primary.toString(16)}`
+    return lane.type === 'annotation'
+      ? `#${palette.annotation.toString(16).padStart(6, '0')}`
+      : `#${palette.primary.toString(16).padStart(6, '0')}`
   }
 
   function panelShowActor(lane: Lane): boolean {
@@ -3361,7 +3382,7 @@
       {/each}
     {/each}
     {#each panelRows as row, i (row.lane.id)}
-      {@const bg = i % 2 === 0 ? '#fff' : 'var(--color-bg-5, #e0e0e0)'}
+      {@const bg = i % 2 === 0 ? 'var(--color-timeline-bg, #fff)' : 'var(--color-bg-3, #e0e0e0)'}
       <div
         class="panel-row"
         role="option"
@@ -3438,7 +3459,7 @@
     display: flex;
     flex-direction: row;
     width: 100%;
-    background: var(--color-bg-2, #f5f5f5);
+    background: var(--color-timeline-bg, #f5f5f5);
     align-items: stretch;
   }
 
@@ -3446,7 +3467,7 @@
     flex-shrink: 0;
     overflow: hidden;
     border-right: 1px solid var(--color-border-strong, #ddd);
-    background: var(--color-bg-2, #f5f5f5);
+    background: var(--color-timeline-bg, #f5f5f5);
     font-family: system-ui, sans-serif;
     user-select: none;
     display: flex;
@@ -3468,7 +3489,7 @@
   .signal-panel-label {
     flex: 1;
     font-size: 10px;
-    color: var(--color-text-3, #555);
+    color: var(--color-text-3, #666);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -3476,7 +3497,7 @@
 
   .panel-spacer {
     flex-shrink: 0;
-    background: var(--color-bg-2, #f5f5f5);
+    background: var(--color-timeline-bg, #f5f5f5);
     overflow: hidden;
     position: relative;
   }
@@ -3496,7 +3517,7 @@
     position: absolute;
     left: 0; right: 0; top: 0;
     height: 1.5px;
-    background: var(--color-text-3, #777);
+    background: var(--color-text-3, #666);
     pointer-events: none;
   }
 
@@ -3505,11 +3526,11 @@
   }
 
   .panel-row.panel-drop-before {
-    box-shadow: 0 -2px 0 0 var(--color-primary, #2196f3);
+    box-shadow: 0 -2px 0 0 var(--color-primary, #5BBCD6);
   }
 
   .panel-row.panel-drop-after {
-    box-shadow: 0 2px 0 0 var(--color-primary, #2196f3);
+    box-shadow: 0 2px 0 0 var(--color-primary, #5BBCD6);
   }
 
   .drag-handle {
@@ -3545,7 +3566,7 @@
     font-size: 7px;
     color: #fff;
     padding: 1px 3px;
-    border-radius: 2px;
+    border-radius: var(--radius-2xs, 2px);
     flex-shrink: 0;
     font-weight: 700;
     line-height: 1.4;
@@ -3553,7 +3574,7 @@
 
   .row-label {
     font-size: 9px;
-    color: var(--color-text-1, #333);
+    color: var(--color-text-1, #222);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -3564,7 +3585,7 @@
   .row-label-editing {
     overflow: visible;
     outline: none;
-    border-bottom: 1px solid var(--color-primary, #2196f3);
+    border-bottom: 1px solid var(--color-primary, #5BBCD6);
     background: transparent;
     white-space: nowrap;
     cursor: text;
@@ -3589,7 +3610,7 @@
   }
 
   .panel-resize-handle:hover {
-    background: var(--color-primary, #2196f3);
+    background: var(--color-primary, #5BBCD6);
   }
 
   .timeline-wrap {
@@ -3608,7 +3629,7 @@
     flex-shrink: 0;
     height: 3px;
     cursor: row-resize;
-    background: var(--color-border, #d0d0d0);
+    background: var(--color-border, #ccc);
   }
   .signal-pair-handle:hover { background: rgba(74, 158, 255, 0.6); }
 

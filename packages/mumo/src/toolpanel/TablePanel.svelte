@@ -1143,7 +1143,7 @@
     white-space: nowrap;
   }
   .tier-dd-btn:hover { background: var(--color-bg-2, #f5f5f5); }
-  .tier-dd-btn.open  { border-color: var(--color-primary, #4a9eff); }
+  .tier-dd-btn.open  { border-color: var(--color-primary, #5BBCD6); }
   /* ── Merge LT toggle ──────────────────────────────────────────────────── */
   .merge-lt-btn {
     display: inline-flex;
@@ -1216,7 +1216,7 @@
     position: absolute;
     top: calc(100% + 4px);
     right: 0;
-    z-index: 50;
+    z-index: var(--z-dropdown, 300);
     background: var(--color-bg-0, #fff);
     border: 1px solid var(--color-border-strong, #ddd);
     border-radius: var(--radius-md, 6px);
@@ -1236,7 +1236,7 @@
     color: var(--color-text-1, #222);
     cursor: pointer;
   }
-  .export-menu button:hover { background: var(--color-bg-menu-hover, #f5f5f5); }
+  .export-menu button:hover { background: var(--color-bg-menu-hover, #ECF7FB); }
 
 .tier-dd-caret {
     color: var(--color-text-muted, #999);
@@ -1249,7 +1249,7 @@
     position: absolute;
     top: calc(100% + 4px);
     left: 0;
-    z-index: 50;
+    z-index: var(--z-dropdown, 300);
     min-width: 200px;
     max-width: 300px;
     max-height: 300px;
@@ -1271,7 +1271,7 @@
   }
   .tier-dd-lineage-label:not(:first-child),
   .tier-dd-lineage-label--sep {
-    border-top: 1px solid var(--color-border, #eee);
+    border-top: 1px solid var(--color-border, #ccc);
     margin-top: 4px;
     padding-top: 8px;
   }
@@ -1285,7 +1285,7 @@
     cursor: pointer;
     user-select: none;
   }
-  .tier-dd-item:hover { background: var(--color-bg-menu-hover, #f5f5f5); }
+  .tier-dd-item:hover { background: var(--color-bg-menu-hover, #ECF7FB); }
 
   .tier-dd-name {
     font-weight: 600;
@@ -1301,7 +1301,7 @@
     font-weight: 700;
     letter-spacing: 0.04em;
     padding: 1px 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     background: var(--color-bg-4, #e8e8e8);
     color: var(--color-text-3, #666);
     flex-shrink: 0;
@@ -1342,29 +1342,36 @@
   }
   :global(.table-border .tabulator-col-title)  { padding: 0.4rem 0.6rem; }
   :global(.table-border .tabulator-col-sorter) { display: none !important; }
-  :global(.table-border .tabulator-row)        { border-bottom: 1px solid #ddd; background: #fff; }
-  :global(.table-border .tabulator-row:nth-child(even)) { background: #f4f5f6; }
+  /* Tabulator's own stylesheet hardcodes the tableholder/table background to white —
+     override it so empty space around/between rows doesn't stay light in dark mode. */
+  :global(.table-border .tabulator-tableholder),
+  :global(.table-border .tabulator-tableholder .tabulator-table) {
+    background-color: var(--color-bg-0, #fff);
+    color: var(--color-text-1, #333);
+  }
+  :global(.table-border .tabulator-row)        { border-bottom: 1px solid var(--color-border-strong, #ddd); background: var(--color-bg-0, #fff); }
+  :global(.table-border .tabulator-row:nth-child(even)) { background: var(--color-bg-1, #f4f5f6); }
   :global(.table-border .tabulator-row:hover)  { background: var(--color-primary-light); }
   :global(.table-border .tabulator-cell) {
-    padding: 0.35rem 0.6rem; border-right: 1px solid #ddd; color: #222; cursor: text;
+    padding: 0.35rem 0.6rem; border-right: 1px solid var(--color-border-strong, #ddd); color: var(--color-text-1, #222); cursor: text;
   }
   :global(.tab-cell-input), :global(.tab-cell-select) {
     width: 100%; height: 100%; padding: 0.28rem 0.45rem;
-    border: none; outline: 2px solid var(--color-primary, #4a9eff);
-    font-family: system-ui, sans-serif; font-size: 0.8rem; color: #111;
-    background: #fff; box-sizing: border-box;
+    border: none; outline: 2px solid var(--color-primary, #5BBCD6);
+    font-family: system-ui, sans-serif; font-size: 0.8rem; color: var(--color-text-1, #111);
+    background: var(--color-bg-0, #fff); box-sizing: border-box;
   }
   :global(.tab-cell-select) { cursor: pointer; }
 
   /* ── Read-only cells ──────────────────────────────────────────────────────── */
   :global(.table-border .tabulator-cell.cell-readonly) {
     cursor: default;
-    color: var(--color-text-3, #555);
+    color: var(--color-text-3, #666);
   }
 
   /* ── Null / N-A cells ────────────────────────────────────────────────────── */
   :global(.table-border .tabulator-cell .cell-null) {
-    color: var(--color-text-muted, #bbb);
+    color: var(--color-text-muted, #999);
     cursor: default;
   }
 
@@ -1378,6 +1385,6 @@
     cursor: pointer;
   }
   :global(.table-border .tabulator-cell.time-cell-seek:hover) {
-    color: var(--color-primary, #4a9eff);
+    color: var(--color-primary, #5BBCD6);
   }
 </style>

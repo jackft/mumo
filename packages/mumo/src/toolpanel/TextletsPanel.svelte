@@ -638,7 +638,7 @@
   .note-popup-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 999;
+    z-index: var(--z-overlay-panel, 1000);
     background: transparent;
     border: none;
     padding: 0;
@@ -647,7 +647,7 @@
 
   .note-popup {
     position: fixed;
-    z-index: 1000;
+    z-index: calc(var(--z-overlay-panel, 1000) + 1);
     background: var(--color-bg-0, #fff);
     border: 1px solid var(--color-border, #ccc);
     border-radius: 5px;
@@ -685,18 +685,18 @@
   }
 
   .note-header { display: flex; align-items: center; justify-content: space-between; }
-  .note-add-btn { font-size: 0.65rem; padding: 0.1rem 0.4rem; border: 1px solid var(--color-active); border-radius: 3px; background: transparent; color: var(--color-active-dark); cursor: pointer; font-weight: 600; }
+  .note-add-btn { font-size: 0.65rem; padding: 0.1rem 0.4rem; border: 1px solid var(--color-active); border-radius: var(--radius-xs, 3px); background: transparent; color: var(--color-active-dark); cursor: pointer; font-weight: 600; }
   .note-add-btn:hover { background: var(--color-active-light); }
   .note-entry { display: flex; flex-direction: column; gap: 0.15rem; }
   .note-entry-meta { display: flex; align-items: center; gap: 0.4em; }
   .note-entry-meta .note-delete-btn { margin-left: auto; }
   .note-entry-author { font-size: 0.65rem; font-weight: 600; color: var(--color-text-muted); }
   .note-entry-date { font-size: 0.65rem; color: var(--color-text-muted); }
-  .note-delete-btn { background: none; border: none; cursor: pointer; font-size: 0.8rem; color: #bbb; padding: 0 0.2rem; line-height: 1; border-radius: 2px; }
+  .note-delete-btn { background: none; border: none; cursor: pointer; font-size: 0.8rem; color: #bbb; padding: 0 0.2rem; line-height: 1; border-radius: var(--radius-2xs, 2px); }
   .note-delete-btn:hover { color: #c44; background: #fde; }
   .note-entry-text { resize: vertical; width: 100%; box-sizing: border-box; }
   .note-empty { font-size: 0.68rem; color: var(--color-text-muted); margin: 0; font-style: italic; }
-  .note-other { font-size: 0.68rem; color: var(--color-text-muted); padding: 0.2rem 0.35rem; background: #f5f5f5; border-radius: 3px; white-space: pre-wrap; word-break: break-word; display: flex; flex-direction: column; gap: 0.1rem; }
+  .note-other { font-size: 0.68rem; color: var(--color-text-muted); padding: 0.2rem 0.35rem; background: #f5f5f5; border-radius: var(--radius-xs, 3px); white-space: pre-wrap; word-break: break-word; display: flex; flex-direction: column; gap: 0.1rem; }
   .note-other-meta { display: flex; align-items: baseline; gap: 0.4em; }
   .note-other-author { font-weight: 600; }
   .note-other-date { font-size: 0.62rem; color: #bbb; }

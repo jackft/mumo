@@ -1,6 +1,6 @@
 /* ── Backdrop ──────────────────────────────────────────────────────── */
 .dlg-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.25); z-index: 200;
+  position: fixed; inset: 0; background: rgba(0,0,0,0.25); z-index: var(--z-modal, 2000);
   border: none; padding: 0; cursor: default;
 }
 .dlg-backdrop:hover { background: rgba(0,0,0,0.25); }
@@ -8,10 +8,11 @@
 /* ── Container ─────────────────────────────────────────────────────── */
 .dlg {
   position: fixed;
-  z-index: 201;
+  z-index: calc(var(--z-modal, 2000) + 1);
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   background: var(--color-bg-0);
+  color: var(--color-text-1);
   border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0,0,0,0.18);
   padding: 1.5rem;
@@ -143,28 +144,31 @@
 /* ── Tabulator overrides (shared by all table-based dialogs) ───────── */
 .tabulator { border: none !important; border-radius: 0 !important; font-family: inherit; font-size: 0.85rem; }
 .tabulator input[type="checkbox"] { accent-color: var(--color-primary); }
-.tabulator .tabulator-header { background: #dde1e6; border-bottom: 1px solid #bbb; }
+.tabulator .tabulator-header { background: var(--color-bg-4); border-bottom: 1px solid var(--color-border-strong); }
 .tabulator .tabulator-col {
-  background: #dde1e6; border-right: 1px solid #bbb;
-  font-size: 0.71rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #444;
+  background: var(--color-bg-4); border-right: 1px solid var(--color-border-strong);
+  font-size: 0.71rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-2);
 }
 .tabulator .tabulator-col-title { padding: 0.4rem 0.6rem; }
-.tabulator .tabulator-row { border-bottom: 1px solid #ddd; background: #fff; }
-.tabulator .tabulator-row.tabulator-row-even { background: #f4f5f6; }
+/* Tabulator's own stylesheet hardcodes the tableholder/table background to white. */
+.tabulator .tabulator-tableholder,
+.tabulator .tabulator-tableholder .tabulator-table { background-color: var(--color-bg-0); color: var(--color-text-1); }
+.tabulator .tabulator-row { border-bottom: 1px solid var(--color-border-strong); background: var(--color-bg-0); }
+.tabulator .tabulator-row.tabulator-row-even { background: var(--color-bg-1); }
 .tabulator .tabulator-row:hover,
 .tabulator .tabulator-row.tabulator-row-even:hover { background: var(--color-primary-light); }
-.tabulator .tabulator-cell { border-right: 1px solid #ddd; padding: 0.35rem 0.6rem; color: #222; }
+.tabulator .tabulator-cell { border-right: 1px solid var(--color-border-strong); padding: 0.35rem 0.6rem; color: var(--color-text-1); }
 .tabulator .tabulator-cell.tabulator-editing input {
-  border: 1px solid var(--color-primary); border-radius: 2px;
+  border: 1px solid var(--color-primary); border-radius: var(--radius-2xs, 2px);
   padding: 0.15rem 0.35rem; font-size: 0.85rem; font-family: inherit;
-  background: #fff; color: #222; outline: none; width: 100%;
+  background: var(--color-bg-0); color: var(--color-text-1); outline: none; width: 100%;
 }
 
-.cell-placeholder { color: #bbb; font-style: italic; pointer-events: none; user-select: none; }
+.cell-placeholder { color: var(--color-text-faint); font-style: italic; pointer-events: none; user-select: none; }
 
 .tab-del-btn {
   border: none; background: transparent; color: var(--color-text-muted); cursor: pointer;
   padding: 2px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 3px; transition: color 0.15s, background 0.15s;
+  border-radius: var(--radius-xs, 3px); transition: color 0.15s, background 0.15s;
 }
 .tab-del-btn:hover { color: var(--color-danger); background: var(--color-danger-light); }

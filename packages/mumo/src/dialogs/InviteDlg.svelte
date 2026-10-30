@@ -128,7 +128,7 @@
     flex: 1;
     padding: 0.25rem 0.4rem;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     font-size: var(--font-xs);
     font-family: monospace;
     background: var(--color-bg-1);
@@ -141,7 +141,7 @@
     padding: 0.2rem 0.5rem;
     font-size: var(--font-xs);
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     background: var(--color-bg-1);
     color: var(--color-text-1);
     cursor: pointer;

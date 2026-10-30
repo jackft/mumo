@@ -432,7 +432,7 @@
     border-right: 1.5px solid black;
     border-top: 1.5px solid black;
     border-bottom: 1.5px solid black;
-    border-radius: 0 4px 4px 0;
+    border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;
     opacity: 0.18;
     cursor: pointer;
     transition: opacity 0.12s;
@@ -477,7 +477,7 @@
     padding: 0;
     transition: color 0.1s;
   }
-  .line-note:hover { color: #333; }
+  .line-note:hover { color: var(--color-text-1, #333); }
 
   .note-count {
     position: absolute;
@@ -488,7 +488,7 @@
     line-height: 1;
     background: #888;
     color: #fff;
-    border-radius: 6px;
+    border-radius: var(--radius-md, 6px);
     padding: 0 2px;
     min-width: 10px;
     text-align: center;
@@ -507,7 +507,7 @@
   .note-popup-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 999;
+    z-index: var(--z-overlay-panel, 1000);
     background: transparent;
     border: none;
     padding: 0;
@@ -516,16 +516,16 @@
 
   .note-popup {
     position: fixed;
-    z-index: 1000;
-    background: #fff;
-    border: 1px solid #ccc;
+    z-index: calc(var(--z-overlay-panel, 1000) + 1);
+    background: var(--color-bg-0, #fff);
+    border: 1px solid var(--color-border, #ccc);
     border-radius: 5px;
     box-shadow: 0 3px 10px rgba(0,0,0,0.14);
     font-size: 0.8rem;
     max-width: 280px;
     min-width: 180px;
     word-break: break-word;
-    color: #222;
+    color: var(--color-text-1, #222);
     overflow: hidden;
   }
 
@@ -534,8 +534,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.3rem 0.5rem 0.3rem 0.65rem;
-    border-bottom: 1px solid #eee;
-    background: #f8f8f8;
+    border-bottom: 1px solid var(--color-border-strong, #eee);
+    background: var(--color-bg-1, #f8f8f8);
   }
 
   .note-popup-title {
@@ -543,7 +543,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #888;
+    color: var(--color-text-light, #888);
   }
 
   .note-popup-close {
@@ -552,22 +552,22 @@
     padding: 0 2px;
     font-size: 1rem;
     line-height: 1;
-    color: #aaa;
+    color: var(--color-text-placeholder, #aaa);
     cursor: pointer;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
   }
-  .note-popup-close:hover { color: #333; background: #eee; }
+  .note-popup-close:hover { color: var(--color-text-1, #333); background: var(--color-bg-2, #eee); }
 
   .note-popup-single {
     padding: 0.1rem 0;
   }
-  .note-popup-single:hover { background: #f5f5f5; }
+  .note-popup-single:hover { background: var(--color-bg-2, #f5f5f5); }
 
   .note-popup-item {
     padding: 0.3rem 0.65rem 0.3rem 0;
   }
   .note-popup-item--sep {
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--color-border-strong, #eee);
   }
 
   .note-popup-toggle {
@@ -581,13 +581,13 @@
     cursor: pointer;
     font: inherit;
     text-align: left;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
   }
-  .note-popup-toggle:hover { background: #f5f5f5; }
+  .note-popup-toggle:hover { background: var(--color-bg-2, #f5f5f5); }
 
   .note-popup-arrow {
     font-size: 0.65rem;
-    color: #888;
+    color: var(--color-text-light, #888);
     flex-shrink: 0;
   }
 
@@ -596,7 +596,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #666;
+    color: var(--color-text-3, #666);
     padding: 0.3rem 0.65rem 0.1rem;
     display: block;
   }

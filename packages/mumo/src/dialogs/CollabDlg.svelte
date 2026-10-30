@@ -351,7 +351,7 @@
     flex: 1;
     padding: 0.3rem 0.5rem;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     font-size: var(--font-sm);
     font-family: monospace;
     background: var(--color-bg-0);

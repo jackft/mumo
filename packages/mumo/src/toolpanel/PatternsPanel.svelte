@@ -1097,19 +1097,19 @@
   .slot-label { font-weight: 500; font-size: var(--font-sm); flex: 1; text-align: right; }
   .slot-kind {
     font-size: 0.6rem; color: var(--color-text-muted);
-    border: 1px solid var(--color-border); border-radius: 2px;
+    border: 1px solid var(--color-border); border-radius: var(--radius-2xs, 2px);
     padding: 0 0.22rem; line-height: 1.5; flex-shrink: 0;
     font-style: italic;
   }
   .slot-tier-badge {
     font-size: 0.6rem; color: var(--color-active-dark);
     background: var(--color-active-light); border: 1px solid var(--color-active);
-    border-radius: 2px; padding: 0 0.22rem; line-height: 1.5; flex-shrink: 0;
+    border-radius: var(--radius-2xs, 2px); padding: 0 0.22rem; line-height: 1.5; flex-shrink: 0;
     max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .slot-shortcut {
     font-size: 0.62rem; color: var(--color-text-placeholder);
-    border: 1px solid var(--color-border); border-radius: 2px;
+    border: 1px solid var(--color-border); border-radius: var(--radius-2xs, 2px);
     padding: 0 0.25rem; line-height: 1.4; flex-shrink: 0;
   }
   .slot-optional { font-size: 0.68rem; color: var(--color-text-light, #888); font-style: italic; }
@@ -1136,7 +1136,7 @@
   .slot-text { color: #2c5f8a; font-family: 'CMU Serif', 'Computer Modern', Georgia, serif; font-style: italic; flex: 1; }
   .slot-text.pattern-ref { font-style: normal; font-weight: 500; }
   .slot-empty { color: var(--color-text-light, #888); }
-  .pattern-ref-detail { font-size: 0.7rem; color: var(--color-text-muted, #aaa); flex-shrink: 0; }
+  .pattern-ref-detail { font-size: 0.7rem; color: var(--color-text-muted, #999); flex-shrink: 0; }
   .goto-btn {
     padding: 0 0.3rem;
     font-size: 0.78rem;
@@ -1250,7 +1250,7 @@
   .note-popup-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 999;
+    z-index: var(--z-overlay-panel, 1000);
     background: transparent;
     border: none;
     padding: 0;
@@ -1258,16 +1258,16 @@
   }
   .note-popup {
     position: fixed;
-    z-index: 1000;
-    background: #fff;
-    border: 1px solid #ccc;
+    z-index: calc(var(--z-overlay-panel, 1000) + 1);
+    background: var(--color-bg-0, #fff);
+    border: 1px solid var(--color-border, #ccc);
     border-radius: 5px;
     box-shadow: 0 3px 10px rgba(0,0,0,0.14);
     font-size: 0.8rem;
     max-width: 280px;
     min-width: 180px;
     word-break: break-word;
-    color: #222;
+    color: var(--color-text-1, #222);
     overflow: hidden;
   }
   .note-popup-header {
@@ -1275,15 +1275,15 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.3rem 0.5rem 0.3rem 0.65rem;
-    border-bottom: 1px solid #eee;
-    background: #f8f8f8;
+    border-bottom: 1px solid var(--color-border-strong, #eee);
+    background: var(--color-bg-1, #f8f8f8);
   }
   .note-popup-title {
     font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #888;
+    color: var(--color-text-light, #888);
   }
   .note-popup-close {
     background: none;
@@ -1291,11 +1291,11 @@
     padding: 0 2px;
     font-size: 1rem;
     line-height: 1;
-    color: #aaa;
+    color: var(--color-text-placeholder, #aaa);
     cursor: pointer;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
   }
-  .note-popup-close:hover { color: #333; background: #eee; }
+  .note-popup-close:hover { color: var(--color-text-1, #333); background: var(--color-bg-2, #eee); }
   .note-popup-single { padding: 0.1rem 0; }
   .note-popup-text {
     margin: 0;
@@ -1348,18 +1348,18 @@
   .note-block { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.1rem; }
   .note-header { display: flex; align-items: center; justify-content: space-between; }
   .note-label { font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-muted); }
-  .note-add-btn { font-size: var(--font-xs); padding: 0.1rem 0.4rem; border: 1px solid var(--color-active); border-radius: 3px; background: transparent; color: var(--color-active-dark); cursor: pointer; font-weight: 600; }
+  .note-add-btn { font-size: var(--font-xs); padding: 0.1rem 0.4rem; border: 1px solid var(--color-active); border-radius: var(--radius-xs, 3px); background: transparent; color: var(--color-active-dark); cursor: pointer; font-weight: 600; }
   .note-add-btn:hover { background: var(--color-active-light); }
   .note-entry { display: flex; flex-direction: column; gap: 0.15rem; }
   .note-entry-meta { display: flex; align-items: center; gap: 0.4em; }
   .note-entry-meta .note-delete-btn { margin-left: auto; }
   .note-entry-author { font-size: 0.68rem; font-weight: 600; color: var(--color-text-muted); }
   .note-entry-date { font-size: 0.68rem; color: var(--color-text-muted); }
-  .note-delete-btn { background: none; border: none; cursor: pointer; font-size: 0.8rem; color: #bbb; padding: 0 0.2rem; line-height: 1; border-radius: 2px; }
+  .note-delete-btn { background: none; border: none; cursor: pointer; font-size: 0.8rem; color: #bbb; padding: 0 0.2rem; line-height: 1; border-radius: var(--radius-2xs, 2px); }
   .note-delete-btn:hover { color: #c44; background: #fde; }
   .note-entry-text { resize: vertical; width: 100%; box-sizing: border-box; }
   .note-empty { font-size: var(--font-xs); color: var(--color-text-muted); margin: 0; font-style: italic; }
-  .note-other { font-size: var(--font-xs); color: var(--color-text-muted); padding: 0.25rem 0.35rem; background: #f5f5f5; border-radius: 3px; white-space: pre-wrap; word-break: break-word; display: flex; flex-direction: column; gap: 0.1rem; }
+  .note-other { font-size: var(--font-xs); color: var(--color-text-muted); padding: 0.25rem 0.35rem; background: #f5f5f5; border-radius: var(--radius-xs, 3px); white-space: pre-wrap; word-break: break-word; display: flex; flex-direction: column; gap: 0.1rem; }
   .note-other-meta { display: flex; align-items: baseline; gap: 0.4em; }
   .note-other-author { font-weight: 600; }
   .note-other-date { font-size: 0.65rem; color: #bbb; }

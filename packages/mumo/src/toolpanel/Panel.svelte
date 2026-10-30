@@ -138,7 +138,7 @@
     width: 100%;
     flex-shrink: 0;
     border-left: none;
-    background: #f0f0f0;
+    background: var(--color-bg-3, #f0f0f0);
     display: flex;
     flex-direction: column;
     font-size: 0.83rem;
@@ -155,8 +155,8 @@
 
   .tab-bar {
     display: flex;
-    border-bottom: 1px solid #d8d8d8;
-    background: #e8e8e8;
+    border-bottom: 1px solid var(--color-bg-5, #d8d8d8);
+    background: var(--color-bg-4, #e8e8e8);
     flex-shrink: 0;
   }
 
@@ -170,12 +170,12 @@
     font-size: 0.7rem;
     font-weight: 500;
     text-transform: capitalize;
-    color: #999;
+    color: var(--color-text-muted, #999);
     cursor: pointer;
     letter-spacing: 0.03em;
   }
-  .tab:hover { color: #555; background: #f5f5f5; }
-  .tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); background: #fff; }
+  .tab:hover { color: var(--color-text-2, #555); background: var(--color-bg-2, #f5f5f5); }
+  .tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); background: var(--color-bg-0, #fff); }
 
 
 </style>

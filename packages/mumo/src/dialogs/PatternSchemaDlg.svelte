@@ -475,8 +475,8 @@
 
   /* Slot drag-reorder — matches the lane-reorder styling in Timeline.svelte */
   .slot-block.panel-dragging { opacity: 0.35; }
-  .slot-block.panel-drop-before { box-shadow: 0 -2px 0 0 var(--color-primary, #2196f3); }
-  .slot-block.panel-drop-after  { box-shadow: 0 2px 0 0 var(--color-primary, #2196f3); }
+  .slot-block.panel-drop-before { box-shadow: 0 -2px 0 0 var(--color-primary, #5BBCD6); }
+  .slot-block.panel-drop-after  { box-shadow: 0 2px 0 0 var(--color-primary, #5BBCD6); }
 
   .slot-header-row {
     display: flex;

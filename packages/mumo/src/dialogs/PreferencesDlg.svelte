@@ -11,18 +11,22 @@
     { label: 'Courier New',         value: '"Courier New", Courier, monospace' },
   ]
 
-  const { transcriptFont, userName = 'Anonymous', preservePitch = true, keyBindings, onconfirm, onclose }: {
+  type Theme = 'auto' | 'light' | 'dark'
+
+  const { transcriptFont, userName = 'Anonymous', preservePitch = true, theme = 'auto', keyBindings, onconfirm, onclose }: {
     transcriptFont: string
     userName?: string
     preservePitch?: boolean
+    theme?: Theme
     keyBindings: KeyBindings
-    onconfirm: (prefs: { transcriptFont: string; userName: string; preservePitch: boolean; keyBindings: KeyBindings }) => void
+    onconfirm: (prefs: { transcriptFont: string; userName: string; preservePitch: boolean; theme: Theme; keyBindings: KeyBindings }) => void
     onclose: () => void
   } = $props()
 
   let selectedFont    = $state(untrack(() => transcriptFont))
   let editedName      = $state(untrack(() => userName))
   let pitchPref       = $state(untrack(() => preservePitch))
+  let themePref       = $state(untrack(() => theme))
   let localBindings   = $state<KeyBindings>(untrack(() => ({ ...keyBindings })))
   let listeningId     = $state<ActionId | null>(null)
 
@@ -70,7 +74,7 @@
   }
 
   function confirm() {
-    onconfirm({ transcriptFont: selectedFont, userName: editedName, preservePitch: pitchPref, keyBindings: localBindings })
+    onconfirm({ transcriptFont: selectedFont, userName: editedName, preservePitch: pitchPref, theme: themePref, keyBindings: localBindings })
   }
 </script>
 
@@ -80,6 +84,18 @@
 <div class="dlg prefs-dlg" role="dialog" aria-modal="true" aria-labelledby="prefs-dlg-title">
   <h3 id="prefs-dlg-title">Preferences</h3>
   <div class="prefs-body">
+
+  <section class="prefs-section">
+    <h4 class="prefs-section-title">Appearance</h4>
+    <div class="prefs-row">
+      <label for="prefs-theme" class="prefs-label">Theme</label>
+      <select id="prefs-theme" class="prefs-select" bind:value={themePref}>
+        <option value="auto">Match system</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+  </section>
 
   <section class="prefs-section">
     <h4 class="prefs-section-title">Identity</h4>
@@ -200,7 +216,7 @@
   .prefs-input {
     padding: 0.3rem 0.5rem;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     font-size: var(--font-sm);
     font-family: inherit;
     background: var(--color-bg-0);
@@ -219,7 +235,7 @@
   .prefs-select {
     padding: 0.3rem 0.5rem;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     font-size: var(--font-sm);
     font-family: inherit;
     background: var(--color-bg-0);
@@ -243,7 +259,7 @@
     color: var(--color-text-muted);
     background: none;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 2px 6px;
     cursor: pointer;
   }
@@ -273,7 +289,7 @@
     padding: 3px 0;
     flex-wrap: wrap;
   }
-  .shortcut-row.conflict .shortcut-chip { border-color: var(--color-danger, #e74c3c); }
+  .shortcut-row.conflict .shortcut-chip { border-color: var(--color-danger, #FF0000); }
 
   .shortcut-label {
     flex: 1;
@@ -289,7 +305,7 @@
     font-family: monospace;
     padding: 2px 7px;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     background: var(--color-bg-1);
     color: var(--color-text-1);
     cursor: pointer;
@@ -321,7 +337,7 @@
   .conflict-label {
     flex-basis: 100%;
     font-size: 0.68rem;
-    color: var(--color-danger, #e74c3c);
+    color: var(--color-danger, #FF0000);
     padding-left: calc(160px + 0.5rem);
   }
 </style>

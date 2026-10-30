@@ -1509,7 +1509,7 @@
     height: 40px;
     flex-shrink: 0;
     background: var(--color-bg-0, #fff);
-    border-bottom: 1px solid var(--color-border, #e0e0e0);
+    border-bottom: 1px solid var(--color-border, #ccc);
     -webkit-app-region: drag;
     padding: 0 max(0.5rem, calc(100vw - env(titlebar-area-width, 100vw))) 0 0.5rem;
     display: flex;
@@ -1527,7 +1527,7 @@
   .cv-titlebar-title {
     font-size: 0.85rem;
     font-weight: 600;
-    color: var(--color-text-2, #555);
+    color: var(--color-text-2, #444);
     letter-spacing: 0.01em;
   }
 
@@ -1538,15 +1538,15 @@
   .cv-editor-btn {
     -webkit-app-region: no-drag;
     background: none;
-    border: 1px solid var(--color-border, #ddd);
-    border-radius: 3px;
+    border: 1px solid var(--color-border, #ccc);
+    border-radius: var(--radius-xs, 3px);
     padding: 2px 10px;
     font-size: var(--font-sm, 0.8rem);
     cursor: pointer;
-    color: var(--color-text-1, #333);
+    color: var(--color-text-1, #222);
   }
   .cv-editor-btn:hover {
-    background: var(--color-bg-1, #f5f5f5);
+    background: var(--color-bg-1, #fafafa);
     border-color: var(--color-text-muted, #999);
   }
 
@@ -1624,7 +1624,7 @@
     cursor: pointer;
     font-size: var(--font-sm);
     color: var(--color-text-1);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
   }
   .cv-tree-all:hover { background: var(--color-bg-2); }
 
@@ -1659,7 +1659,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     padding: 2px 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     min-width: 0;
   }
   .cv-folder-label:hover { background: var(--color-bg-2); }
@@ -1676,7 +1676,7 @@
     line-height: 1;
   }
   .cv-folder-row:hover .cv-remove-btn { opacity: 1; }
-  .cv-remove-btn:hover { color: var(--color-danger, #e74c3c); }
+  .cv-remove-btn:hover { color: var(--color-danger, #FF0000); }
 
   .cv-no-files {
     padding: 2px 10px 2px 26px;
@@ -1698,12 +1698,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
   }
   .cv-file-row:hover { background: var(--color-bg-2); }
 
   .cv-selected {
-    background: var(--color-primary-dim, color-mix(in srgb, var(--color-primary) 12%, transparent)) !important;
+    background: var(--color-primary-dim) !important;
     color: var(--color-primary) !important;
   }
 
@@ -1748,14 +1748,14 @@
     gap: 3px;
     padding: 4px 6px;
     border-bottom: 1px solid var(--color-border);
-    background: var(--color-primary-dim, color-mix(in srgb, var(--color-primary) 8%, transparent));
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
   }
   .cv-create-coll-input {
     flex: 1;
     min-width: 0;
     padding: 2px 5px;
     border: 1px solid var(--color-primary);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     font-size: 0.75rem;
     background: var(--color-bg-0);
     color: var(--color-text-1);
@@ -1771,12 +1771,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 9999;
+    z-index: var(--z-modal, 2000);
   }
   .cv-modal {
     background: var(--color-bg-0);
     border: 1px solid var(--color-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md, 6px);
     padding: 1.25rem 1.5rem;
     max-width: 320px;
     width: 90vw;
@@ -1800,7 +1800,7 @@
   .cv-modal-cancel {
     background: none;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 4px 14px;
     font-size: 0.8rem;
     cursor: pointer;
@@ -1808,9 +1808,9 @@
   }
   .cv-modal-cancel:hover { color: var(--color-text-1); border-color: var(--color-text-muted); }
   .cv-modal-delete {
-    background: var(--color-danger, #e74c3c);
+    background: var(--color-danger, #FF0000);
     border: none;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 4px 14px;
     font-size: 0.8rem;
     cursor: pointer;
@@ -1839,7 +1839,7 @@
     flex: 1;
     padding: 4px 8px;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     font-size: var(--font-sm);
     background: var(--color-bg-1);
     color: var(--color-text-1);
@@ -1850,7 +1850,7 @@
   .cv-sync-btn {
     background: none;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 3px 8px;
     cursor: pointer;
     font-size: 1rem;
@@ -1903,7 +1903,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 4px 2px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
   }
   .cv-frag-row:hover { background: var(--color-bg-1); }
 
@@ -1924,9 +1924,9 @@
 
   .cv-frag-code {
     font-size: 0.68rem;
-    background: var(--color-primary-dim, color-mix(in srgb, var(--color-primary) 12%, transparent));
+    background: var(--color-primary-dim);
     color: var(--color-primary);
-    border-radius: 2px;
+    border-radius: var(--radius-2xs, 2px);
     padding: 0 4px;
     white-space: nowrap;
   }
@@ -1941,7 +1941,7 @@
   .cv-kind-tab {
     background: none;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 3px 9px;
     font-size: 0.72rem;
     cursor: pointer;
@@ -1950,7 +1950,7 @@
   }
   .cv-kind-tab:hover { color: var(--color-text-1); }
   .cv-kind-active {
-    background: var(--color-primary-dim, color-mix(in srgb, var(--color-primary) 12%, transparent));
+    background: var(--color-primary-dim);
     color: var(--color-primary) !important;
     border-color: var(--color-primary);
   }
@@ -1960,7 +1960,7 @@
     max-width: 140px;
     padding: 3px 4px;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     font-size: 0.72rem;
     background: var(--color-bg-1);
     color: var(--color-text-1);
@@ -1973,7 +1973,7 @@
     font-weight: 600;
     background: var(--color-bg-2);
     color: var(--color-text-muted);
-    border-radius: 2px;
+    border-radius: var(--radius-2xs, 2px);
     padding: 0 4px;
     white-space: nowrap;
     flex-shrink: 0;
@@ -1982,9 +1982,9 @@
   .cv-schema-chip {
     font-size: 0.68rem;
     font-weight: 600;
-    background: var(--color-primary-dim, color-mix(in srgb, var(--color-primary) 12%, transparent));
+    background: var(--color-primary-dim);
     color: var(--color-primary);
-    border-radius: 2px;
+    border-radius: var(--radius-2xs, 2px);
     padding: 0 4px;
     white-space: nowrap;
     flex-shrink: 0;
@@ -2022,7 +2022,7 @@
     font-size: 0.66rem;
     border: 1px solid var(--color-border);
     color: var(--color-text-muted);
-    border-radius: 2px;
+    border-radius: var(--radius-2xs, 2px);
     padding: 0 3px;
     white-space: nowrap;
   }
@@ -2032,7 +2032,7 @@
     flex-shrink: 0;
     background: none;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 3px 8px;
     font-size: 0.72rem;
     cursor: pointer;
@@ -2068,7 +2068,7 @@
     width: 52px;
     padding: 3px 5px;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     font-size: 0.75rem;
     background: var(--color-bg-0);
     color: var(--color-text-1);
@@ -2098,7 +2098,7 @@
   .cv-mini-btn {
     background: none;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 1px 7px;
     font-size: 0.7rem;
     color: var(--color-text-muted);
@@ -2116,7 +2116,7 @@
     flex-shrink: 0;
     line-height: 1;
   }
-  .cv-row-del:hover { color: var(--color-danger, #e74c3c); }
+  .cv-row-del:hover { color: var(--color-danger, #FF0000); }
 
   .cv-metric-row { flex-wrap: wrap; }
   .cv-metric-filter { display: flex; align-items: center; gap: 0.3rem; }
@@ -2126,7 +2126,7 @@
     width: 140px;
     padding: 3px 6px;
     border: 1px solid var(--color-primary);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     font-size: 0.75rem;
     background: var(--color-bg-0);
     color: var(--color-text-1);
@@ -2158,7 +2158,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     min-width: 0;
   }
   .cv-saved-name:hover { background: var(--color-bg-2); }
@@ -2184,7 +2184,7 @@
   .cv-regex-btn { font-family: monospace; }
 
   .cv-addto-row {
-    background: var(--color-primary-dim, color-mix(in srgb, var(--color-primary) 8%, transparent));
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
     flex-wrap: wrap;
     border-top: 1px solid var(--color-border);
     border-bottom: none;
@@ -2196,14 +2196,14 @@
     width: 110px;
     padding: 3px 6px;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     font-size: 0.72rem;
     background: var(--color-bg-1);
     color: var(--color-text-1);
     transition: width 0.15s;
   }
   .cv-link-input:focus { width: 220px; outline: 2px solid var(--color-primary); outline-offset: -1px; }
-  .cv-link-failed { outline: 2px solid var(--color-danger, #e74c3c) !important; outline-offset: -1px; }
+  .cv-link-failed { outline: 2px solid var(--color-danger, #FF0000) !important; outline-offset: -1px; }
 
   .cv-collection-head {
     display: flex;
@@ -2216,7 +2216,7 @@
   .cv-count { color: var(--color-text-muted); font-size: 0.7rem; }
 
   .cv-search-error {
-    color: var(--color-danger, #e74c3c);
+    color: var(--color-danger, #FF0000);
     font-weight: 600;
   }
 
@@ -2229,7 +2229,7 @@
   .cv-page-btn {
     background: none;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 0 7px;
     font-size: 0.8rem;
     cursor: pointer;
@@ -2282,7 +2282,7 @@
   .cv-frag-open {
     background: none;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs, 3px);
     padding: 2px 7px;
     font-size: 0.72rem;
     cursor: pointer;
